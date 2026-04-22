@@ -1,5 +1,6 @@
 // ============================================================
 // api.js — Cliente centralizado para Google Apps Script API
+// Usa FormData para evitar preflight CORS (GAS no soporta OPTIONS)
 // ============================================================
 
 const API = (() => {
@@ -9,10 +10,16 @@ const API = (() => {
     const token = Auth.getToken();
     const payload = { action, token, ...body };
 
+    // Enviamos como FormData con campo "payload" = JSON string.
+    // Esto evita el preflight OPTIONS que GAS no puede responder.
+    const formData = new FormData();
+    formData.append('payload', JSON.stringify(payload));
+
     const res = await fetch(GAS_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: formData
+      // Sin Content-Type header — el browser lo setea como multipart/form-data
+      // lo que califica como "simple request" y no dispara preflight
     });
 
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
