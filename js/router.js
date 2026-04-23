@@ -13,30 +13,43 @@ const Router = (() => {
   }
 
   function resolve() {
-    const hash = window.location.hash.replace('#/', '') || 'dashboard';
-    const [path, ...queryParts] = hash.split('?');
+    // Leer el hash completo
+    const fullHash = window.location.hash.replace(/^#\/?/, '') || '';
+
+    // Separar path de query string
+    const qIdx = fullHash.indexOf('?');
+    const path  = qIdx === -1 ? fullHash : fullHash.substring(0, qIdx);
+    const query = qIdx === -1 ? ''       : fullHash.substring(qIdx + 1);
+
+    // Parsear params
     const params = {};
-    if (queryParts.length) {
-      queryParts.join('?').split('&').forEach(p => {
-        const [k, v] = p.split('=');
-        if (k) params[decodeURIComponent(k)] = decodeURIComponent(v || '');
+    if (query) {
+      query.split('&').forEach(p => {
+        const eIdx = p.indexOf('=');
+        if (eIdx === -1) return;
+        const k = decodeURIComponent(p.substring(0, eIdx));
+        const v = decodeURIComponent(p.substring(eIdx + 1));
+        params[k] = v;
       });
     }
 
+    // Ruta por defecto
+    const routePath = path || 'login';
+
     // Protección de rutas
     const publicRoutes = ['login', 'auth/callback'];
-    if (!publicRoutes.includes(path) && !Auth.isLoggedIn()) {
+    if (!publicRoutes.includes(routePath) && !Auth.isLoggedIn()) {
       navigate('login');
       return;
     }
-    if (path === 'login' && Auth.isLoggedIn()) {
+    if (routePath === 'login' && Auth.isLoggedIn()) {
       navigate('dashboard');
       return;
     }
 
-    const handler = routes[path] || routes['404'];
+    const handler = routes[routePath] || routes['404'];
     if (handler) {
-      currentRoute = path;
+      currentRoute = routePath;
       handler(params);
     }
   }

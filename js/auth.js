@@ -1,19 +1,20 @@
 // ============================================================
 // auth.js — Manejo de sesión en el frontend
+// USA sessionStorage en lugar de localStorage (compatible con GitHub Pages)
 // ============================================================
 
 const Auth = (() => {
   const TOKEN_KEY   = 'awp_token';
   const SESSION_KEY = 'awp_session';
 
-  function getToken()   { return localStorage.getItem(TOKEN_KEY); }
+  function getToken()   { return sessionStorage.getItem(TOKEN_KEY); }
   function getSession() {
-    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+    try { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch { return null; }
   }
 
   function setSession(tokenData) {
-    localStorage.setItem(TOKEN_KEY, tokenData.token);
-    localStorage.setItem(SESSION_KEY, JSON.stringify({
+    sessionStorage.setItem(TOKEN_KEY, tokenData.token);
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({
       usuario_id: tokenData.usuario_id,
       email:      tokenData.email,
       nombre:     tokenData.nombre,
@@ -23,8 +24,8 @@ const Auth = (() => {
   }
 
   function clearSession() {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
   }
 
   function isLoggedIn() {
@@ -38,7 +39,6 @@ const Auth = (() => {
   function getNombre() { return getSession()?.nombre || ''; }
   function getEmail()  { return getSession()?.email || ''; }
 
-  /** Verifica permisos */
   function can(action) {
     const perfil = getPerfil();
     if (!perfil) return false;
