@@ -335,16 +335,26 @@ function openImportModal(onDone) {
   });
 }
 
-// Parsear Excel/CSV en el browser usando SheetJS (cargado en index.html)
+// Parsear Excel/CSV en el browser usando SheetJS (carga lazy — solo cuando se necesita)
 async function parseExcelFile(file) {
+  // Cargar XLSX dinámicamente solo la primera vez que se use
+  if (!window.XLSX) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload  = resolve;
+      s.onerror = () => reject(new Error('No se pudo cargar la librería de Excel'));
+      document.head.appendChild(s);
+    });
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        const data    = new Uint8Array(e.target.result);
-        const wb      = XLSX.read(data, { type: 'array' });
-        const sheet   = wb.Sheets[wb.SheetNames[0]];
-        const rows    = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        const data  = new Uint8Array(e.target.result);
+        const wb    = XLSX.read(data, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows  = XLSX.utils.sheet_to_json(sheet, { defval: '' });
         resolve(rows);
       } catch (err) { reject(err); }
     };
