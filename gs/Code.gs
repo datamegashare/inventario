@@ -62,7 +62,6 @@ function doPost(e) {
     const token  = (body.token || '').trim();
 
     // Rutas públicas (sin auth)
-    if (action === 'health')       return jsonResponse({ status: 'ok', ts: Date.now() });
     if (action === 'auth_url')     return jsonResponse(getAuthUrl());
     if (action === 'auth_token')   return jsonResponse(exchangeCodeForToken(body.code));
     if (action === 'verify_token') return jsonResponse(verifyToken(token));
@@ -112,6 +111,12 @@ function doPost(e) {
     }
   } catch (err) {
     Logger.log('doPost ERROR: ' + err.message + '\n' + err.stack);
+    // Si el error viene de validación de negocio, devolver 400 con el mensaje directo
+    // Si es un error inesperado, devolver 500 con detalle
+    const isBusinessError = err.message && !err.message.includes('Cannot read') && !err.message.includes('undefined');
+    if (isBusinessError) {
+      return jsonResponse({ error: err.message }, 400);
+    }
     return jsonResponse({ error: 'Error interno del servidor', detail: err.message }, 500);
   }
 }
