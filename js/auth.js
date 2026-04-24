@@ -1,197 +1,34 @@
 // ============================================================
-//  auth.js  — Inventario AWP  v2.1
-//  Maneja sesión en el frontend.
-//  ► El callback de Google llega AQUÍ (GitHub Pages), no a GAS.
-//  ► Usa localStorage para persistir la sesión entre F5 y tabs.
-//  ► Expone métodos de compatibilidad: getPerfil, getNombre, clearSession
+//  auth.js  — Inventario AWP  v2.2
+//  ► OAuth callback llega al frontend (GitHub Pages), no a GAS
+//  ► localStorage para persistir sesión entre F5 y tabs
+//  ► Compatible con todos los pages: can(), getSession(), setSession(),
+//    getToken(), getPerfil(), getNombre(), clearSession()
 // ============================================================
 
 const Auth = (() => {
   const STORAGE_KEY = 'awp_inventory_session';
-  const SESSION_CHECK_INTERVAL_MS = 5 * 60 * 1000; // Revalidar cada 5 min
+
+  // Permisos por perfil
+  const PERMISOS = {
+    Admin:           ['materiales.read','materiales.create','materiales.update','materiales.delete',
+                      'familias.read','familias.create','familias.update','familias.delete',
+                      'ubicaciones.read','ubicaciones.create','ubicaciones.update','ubicaciones.delete',
+                      'usuarios.read','usuarios.create','usuarios.update','usuarios.delete'],
+    MatCoord:        ['materiales.read','materiales.create','materiales.update',
+                      'familias.read','familias.create','familias.update',
+                      'ubicaciones.read','ubicaciones.create','ubicaciones.update'],
+    Almacenero:      ['materiales.read'],
+    QAQC:            ['materiales.read'],
+    Planner:         ['materiales.read'],
+    FieldEng:        ['materiales.read'],
+    ViewerCliente:   ['materiales.read'],
+    ViewerGerencia:  ['materiales.read'],
+  };
 
   // ─────────────────────────────────────────────────────────────
-  //  login()
-  //  Pide la authUrl al backend y redirige al usuario a Google.
+  //  Sesión — read/write
   // ─────────────────────────────────────────────────────────────
-  async function login() {
-    try {
-      _showAuthLoading('Iniciando sesión con Google...');
-
-      const result = await API.call('getAuthUrl');
-
-      if (!result.success || !result.authUrl) {
-        throw new Error(result.error || 'No se pudo obtener la URL de autenticación');
-      }
-
-      sessionStorage.setItem('oauth_state', result.state);
-      window.location.href = result.authUrl;
-
-    } catch (err) {
-      _hideAuthLoading();
-      console.error('[Auth] Error en login:', err);
-      _showError('Error iniciando sesión: ' + err.message);
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  //  handleCallback()
-  //  Procesa el ?code= que Google envía de vuelta al frontend.
-  // ─────────────────────────────────────────────────────────────
-  async function handleCallback() {
-    const urlParams   = _getUrlParams();
-    const code        = urlParams.get('code');
-    const state       = urlParams.get('state');
-    const error       = urlParams.get('error');
-
-    if (!code && !error) return false;
-
-    if (error) {
-      console.warn('[Auth] Google retornó error OAuth:', error);
-      _showError('Autenticación cancelada: ' + error);
-      _cleanUrl();
-      Router.navigate('login');
-      return true;
-    }
-
-    // Validar state (CSRF)
-    const savedState = sessionStorage.getItem('oauth_state');
-    sessionStorage.removeItem('oauth_state');
-
-    if (!savedState || savedState !== state) {
-      console.error('[Auth] State mismatch — posible ataque CSRF');
-      _showError('Error de seguridad. Por favor intentá de nuevo.');
-      _cleanUrl();
-      Router.navigate('login');
-      return true;
-    }
-
-    _showAuthLoading('Verificando credenciales...');
-
-    try {
-      const result = await API.call('exchangeToken', { code, state });
-
-      if (!result.success) {
-        throw new Error(result.error || 'Error intercambiando token');
-      }
-
-      _saveSession({
-        sessionId: result.sessionId,
-        user:      result.user,
-        expiresAt: result.expiresAt,
-        cachedAt:  Date.now(),
-      });
-
-      console.log('[Auth] Sesión iniciada para:', result.user.email);
-      _cleanUrl();
-      Router.navigate('dashboard');
-
-    } catch (err) {
-      console.error('[Auth] Error en exchangeToken:', err);
-      _showError('Error completando autenticación: ' + err.message);
-      _cleanUrl();
-      Router.navigate('login');
-    }
-
-    _hideAuthLoading();
-    return true;
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  //  logout() / clearSession()
-  // ─────────────────────────────────────────────────────────────
-  async function logout() {
-    const session = _loadSession();
-    if (session?.sessionId) {
-      try { await API.call('logout', { sessionId: session.sessionId }); }
-      catch (e) { console.warn('[Auth] Error notificando logout:', e); }
-    }
-    clearSession();
-    Router.navigate('login');
-  }
-
-  // clearSession: alias sincrónico que usa app.js en el botón de logout
-  function clearSession() {
-    localStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem('oauth_state');
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  //  isAuthenticated() / requireAuth()
-  // ─────────────────────────────────────────────────────────────
-  async function isAuthenticated() {
-    const session = _loadSession();
-    if (!session) return false;
-
-    if (Date.now() > session.expiresAt) {
-      clearSession();
-      return false;
-    }
-
-    const needsRevalidation =
-      (Date.now() - session.cachedAt) > SESSION_CHECK_INTERVAL_MS ||
-      (session.expiresAt - Date.now()) < 30 * 60 * 1000;
-
-    if (needsRevalidation) {
-      try {
-        const result = await API.call('validateSession', { sessionId: session.sessionId });
-        if (!result.valid) {
-          clearSession();
-          return false;
-        }
-        _saveSession({ ...session, user: result.user, expiresAt: result.expiresAt, cachedAt: Date.now() });
-      } catch (err) {
-        console.warn('[Auth] No se pudo revalidar, usando sesión local:', err.message);
-      }
-    }
-
-    return true;
-  }
-
-  async function requireAuth() {
-    const authenticated = await isAuthenticated();
-    if (!authenticated) {
-      Router.navigate('login');
-      return false;
-    }
-    return true;
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  //  Getters de datos de usuario
-  //  Métodos que usa app.js: getPerfil(), getNombre()
-  //  Métodos nuevos: getCurrentUser(), getSessionId()
-  // ─────────────────────────────────────────────────────────────
-  function getCurrentUser() {
-    return _loadSession()?.user || null;
-  }
-
-  function getSessionId() {
-    return _loadSession()?.sessionId || null;
-  }
-
-  // Compatibilidad con app.js
-  function getPerfil() {
-    return _loadSession()?.user?.role || 'viewer';
-  }
-
-  function getNombre() {
-    const user = _loadSession()?.user;
-    return user?.name || user?.email || 'Usuario';
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  //  HELPERS PRIVADOS
-  // ─────────────────────────────────────────────────────────────
-  function _saveSession(data) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.warn('[Auth] localStorage no disponible, usando sessionStorage');
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    }
-  }
 
   function _loadSession() {
     try {
@@ -200,69 +37,151 @@ const Auth = (() => {
     } catch (e) { return null; }
   }
 
-  function _getUrlParams() {
-    const searchParams = new URLSearchParams(window.location.search);
-    if (searchParams.get('code') || searchParams.get('error')) return searchParams;
-    const hash = window.location.hash;
-    const qIdx = hash.indexOf('?');
-    if (qIdx !== -1) return new URLSearchParams(hash.substring(qIdx + 1));
-    return searchParams;
+  function _saveSession(data) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
   }
 
-  function _cleanUrl() {
+  // setSession: llamado por login.js después de exchangeToken
+  // tokenData tiene forma: { token, nombre, perfil, email, usuario_id, expires_in }
+  function setSession(tokenData) {
+    _saveSession({
+      token:      tokenData.token,
+      usuario_id: tokenData.usuario_id,
+      email:      tokenData.email,
+      nombre:     tokenData.nombre,
+      perfil:     tokenData.perfil,
+      expiresAt:  Date.now() + ((tokenData.expires_in || 28800) * 1000),
+    });
+  }
+
+  // getSession: usado por admin.js para comparar usuario_id
+  function getSession() {
+    return _loadSession();
+  }
+
+  function clearSession() {
+    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem('oauth_state');
+  }
+
+  // getToken: usado por api.js para inyectar el token en cada request
+  function getToken() {
+    return _loadSession()?.token || null;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  //  Datos del usuario
+  // ─────────────────────────────────────────────────────────────
+
+  function getPerfil() {
+    return _loadSession()?.perfil || 'viewer';
+  }
+
+  function getNombre() {
+    const s = _loadSession();
+    return s?.nombre || s?.email || 'Usuario';
+  }
+
+  function getCurrentUser() {
+    return _loadSession();
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  //  Permisos
+  //  Usado en materiales.js y admin.js: Auth.can('materiales.create')
+  // ─────────────────────────────────────────────────────────────
+
+  function can(permiso) {
+    const perfil = getPerfil();
+    const perms  = PERMISOS[perfil] || [];
+    return perms.includes(permiso);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  //  Autenticación
+  // ─────────────────────────────────────────────────────────────
+
+  function isAuthenticated() {
+    const session = _loadSession();
+    if (!session || !session.token) return false;
+    if (Date.now() > session.expiresAt) {
+      clearSession();
+      return false;
+    }
+    return true;
+  }
+
+  // requireAuth: llamado por router.js en cada ruta protegida
+  async function requireAuth() {
+    if (!isAuthenticated()) {
+      Router.navigate('login');
+      return false;
+    }
+    return true;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  //  OAuth callback
+  //  Llamado por router.js cuando detecta ?code= en la URL.
+  //  NOTA: login.js tiene su propio flujo con startLogin() que
+  //  llama API.getAuthUrl() y luego Pages.authCallback() procesa
+  //  el code. handleCallback() es el handler alternativo para
+  //  cuando el router detecta el callback antes de cargar las páginas.
+  // ─────────────────────────────────────────────────────────────
+
+  async function handleCallback() {
+    const searchParams = new URLSearchParams(window.location.search);
+    const code  = searchParams.get('code');
+    const error = searchParams.get('error');
+    const state = searchParams.get('state');
+
+    if (!code && !error) return false;
+
+    // Limpiar URL antes de procesar
     const clean = window.location.protocol + '//' + window.location.host + window.location.pathname;
     window.history.replaceState({}, document.title, clean);
-  }
 
-  function _showAuthLoading(message) {
-    let overlay = document.getElementById('_auth_overlay');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = '_auth_overlay';
-      overlay.style.cssText = `
-        position:fixed;inset:0;background:rgba(15,23,42,0.85);
-        display:flex;align-items:center;justify-content:center;
-        z-index:9999;backdrop-filter:blur(4px);
-      `;
-      overlay.innerHTML = `
-        <div style="text-align:center;color:#fff;font-family:system-ui">
-          <div style="width:40px;height:40px;border:3px solid #4f46e5;border-top-color:transparent;
-                      border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px"></div>
-          <p id="_auth_overlay_msg" style="font-size:14px;opacity:0.9">${message}</p>
-        </div>
-        <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
-      `;
-      document.body.appendChild(overlay);
+    if (error) {
+      // Navegar a login con el error
+      window.location.hash = '#/login?error=' + encodeURIComponent(error);
+      return true;
     }
-    const el = document.getElementById('_auth_overlay_msg');
-    if (el) el.textContent = message;
-  }
 
-  function _hideAuthLoading() {
-    document.getElementById('_auth_overlay')?.remove();
-  }
-
-  function _showError(msg) {
-    if (typeof Notifications !== 'undefined' && Notifications.error) {
-      Notifications.error(msg);
-    } else {
-      alert(msg);
+    if (code) {
+      // Navegar a la ruta authCallback del router (la maneja Pages.authCallback)
+      window.location.hash = '#/auth/callback?code=' + encodeURIComponent(code);
+      return true;
     }
+
+    return false;
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  API PÚBLICA
+  //  API pública
   // ─────────────────────────────────────────────────────────────
   return {
-    login,
-    handleCallback,
-    logout,
-    clearSession,       // app.js: Auth.clearSession()
+    // Sesión
+    setSession,       // login.js: Auth.setSession(tokenData)
+    getSession,       // admin.js: Auth.getSession()
+    clearSession,     // app.js: Auth.clearSession()
+    getToken,         // api.js: Auth.getToken()
+
+    // Info usuario
+    getPerfil,        // app.js, dashboard.js, admin.js
+    getNombre,        // app.js, dashboard.js
+    getCurrentUser,
+
+    // Permisos
+    can,              // materiales.js, admin.js: Auth.can('permiso')
+
+    // Auth flow
     isAuthenticated,
     requireAuth,
-    getCurrentUser,
-    getSessionId,
-    getPerfil,          // app.js: Auth.getPerfil()
-    getNombre,          // app.js: Auth.getNombre()
+    handleCallback,   // router.js
   };
 })();
