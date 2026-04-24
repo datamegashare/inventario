@@ -46,10 +46,12 @@ Pages.materiales = async function(params) {
 
   // Cargar datos
   try {
-    [allData, familias] = await Promise.all([
+    let [rawMateriales, rawFamilias] = await Promise.all([
       API.materiales.list({}),
       API.familias.list()
     ]);
+    allData  = Array.isArray(rawMateriales) ? rawMateriales : (rawMateriales.data || rawMateriales.materiales || []);
+    familias = Array.isArray(rawFamilias)   ? rawFamilias   : (rawFamilias.data  || rawFamilias.familias   || []);
 
     // Poblar select familias
     const sel = document.getElementById('filter-familia');
@@ -91,7 +93,9 @@ Pages.materiales = async function(params) {
   document.getElementById('btn-import')?.addEventListener('click', () => openImportModal(refresh));
 
   async function refresh() {
-    allData = await API.materiales.list({});
+    const result = await API.materiales.list({});
+    // GAS puede devolver array directo o { data: [] } — normalizar
+    allData = Array.isArray(result) ? result : (result.data || result.materiales || []);
     renderTable(allData, familias);
   }
 
