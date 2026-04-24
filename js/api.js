@@ -34,7 +34,8 @@ const API = (() => {
         Auth.clearSession();
         Router.navigate('login');
       }
-      throw new Error(data.error);
+      // Preferir data.detail (mensaje de negocio) sobre data.error (mensaje genérico)
+      throw new Error(data.detail || data.error);
     }
     return data;
   }
