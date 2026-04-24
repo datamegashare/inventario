@@ -1,187 +1,107 @@
 // ============================================================
-//  auth.js  — Inventario AWP  v2.2
-//  ► OAuth callback llega al frontend (GitHub Pages), no a GAS
-//  ► localStorage para persistir sesión entre F5 y tabs
-//  ► Compatible con todos los pages: can(), getSession(), setSession(),
-//    getToken(), getPerfil(), getNombre(), clearSession()
+//  auth.js  — Inventario AWP  v2.3  (revisión completa)
+//  Responsabilidades:
+//  - Guardar/leer sesión en localStorage
+//  - Exponer exactamente lo que usan app.js, pages/*.js
+//  - handleCallback: solo redirige, Pages.authCallback hace el exchange
 // ============================================================
 
 const Auth = (() => {
-  const STORAGE_KEY = 'awp_inventory_session';
+  const KEY = 'awp_inv_session';
 
-  // Permisos por perfil
-  const PERMISOS = {
-    Admin:           ['materiales.read','materiales.create','materiales.update','materiales.delete',
-                      'familias.read','familias.create','familias.update','familias.delete',
-                      'ubicaciones.read','ubicaciones.create','ubicaciones.update','ubicaciones.delete',
-                      'usuarios.read','usuarios.create','usuarios.update','usuarios.delete'],
-    MatCoord:        ['materiales.read','materiales.create','materiales.update',
-                      'familias.read','familias.create','familias.update',
-                      'ubicaciones.read','ubicaciones.create','ubicaciones.update'],
-    Almacenero:      ['materiales.read'],
-    QAQC:            ['materiales.read'],
-    Planner:         ['materiales.read'],
-    FieldEng:        ['materiales.read'],
-    ViewerCliente:   ['materiales.read'],
-    ViewerGerencia:  ['materiales.read'],
+  // Permisos por perfil — igual que el sistema original
+  const PERMS = {
+    Admin:          ['materiales.read','materiales.create','materiales.update','materiales.delete',
+                     'familias.read','familias.create','familias.update','familias.delete',
+                     'ubicaciones.read','ubicaciones.create','ubicaciones.update','ubicaciones.delete',
+                     'usuarios.read','usuarios.create','usuarios.update','usuarios.delete'],
+    MatCoord:       ['materiales.read','materiales.create','materiales.update',
+                     'familias.read','familias.create','familias.update',
+                     'ubicaciones.read','ubicaciones.create','ubicaciones.update'],
+    Almacenero:     ['materiales.read'],
+    QAQC:           ['materiales.read'],
+    Planner:        ['materiales.read'],
+    FieldEng:       ['materiales.read'],
+    ViewerCliente:  ['materiales.read'],
+    ViewerGerencia: ['materiales.read'],
   };
 
-  // ─────────────────────────────────────────────────────────────
-  //  Sesión — read/write
-  // ─────────────────────────────────────────────────────────────
-
-  function _loadSession() {
+  // ─── Storage ────────────────────────────────────────────────
+  function _save(data) {
+    try { localStorage.setItem(KEY, JSON.stringify(data)); }
+    catch(e) { sessionStorage.setItem(KEY, JSON.stringify(data)); }
+  }
+  function _load() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(KEY) || sessionStorage.getItem(KEY);
       return raw ? JSON.parse(raw) : null;
-    } catch (e) { return null; }
+    } catch(e) { return null; }
   }
 
-  function _saveSession(data) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    }
-  }
+  // ─── Sesión pública ─────────────────────────────────────────
 
-  // setSession: llamado por login.js después de exchangeToken
-  // tokenData tiene forma: { token, nombre, perfil, email, usuario_id, expires_in }
+  // login.js: Auth.setSession(tokenData)
+  // tokenData viene de API.exchangeToken → ya normalizado a { token, nombre, perfil, email }
   function setSession(tokenData) {
-    _saveSession({
+    _save({
       token:      tokenData.token,
-      usuario_id: tokenData.usuario_id,
-      email:      tokenData.email,
-      nombre:     tokenData.nombre,
-      perfil:     tokenData.perfil,
+      usuario_id: tokenData.usuario_id || '',
+      email:      tokenData.email      || '',
+      nombre:     tokenData.nombre     || tokenData.email || 'Usuario',
+      perfil:     tokenData.perfil     || 'viewer',
       expiresAt:  Date.now() + ((tokenData.expires_in || 28800) * 1000),
     });
   }
 
-  // getSession: usado por admin.js para comparar usuario_id
-  function getSession() {
-    return _loadSession();
-  }
+  // admin.js: Auth.getSession()?.usuario_id
+  function getSession() { return _load(); }
 
+  // app.js: Auth.clearSession()
   function clearSession() {
-    localStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem('oauth_state');
+    localStorage.removeItem(KEY);
+    sessionStorage.removeItem(KEY);
   }
 
-  // getToken: usado por api.js para inyectar el token en cada request
-  function getToken() {
-    return _loadSession()?.token || null;
-  }
+  // api.js: Auth.getToken()
+  function getToken() { return _load()?.token || null; }
 
-  // ─────────────────────────────────────────────────────────────
-  //  Datos del usuario
-  // ─────────────────────────────────────────────────────────────
+  // app.js, dashboard.js, admin.js: Auth.getPerfil()
+  function getPerfil() { return _load()?.perfil || 'viewer'; }
 
-  function getPerfil() {
-    return _loadSession()?.perfil || 'viewer';
-  }
+  // app.js, dashboard.js: Auth.getNombre()
+  function getNombre() { return _load()?.nombre || 'Usuario'; }
 
-  function getNombre() {
-    const s = _loadSession();
-    return s?.nombre || s?.email || 'Usuario';
-  }
-
-  function getCurrentUser() {
-    return _loadSession();
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  //  Permisos
-  //  Usado en materiales.js y admin.js: Auth.can('materiales.create')
-  // ─────────────────────────────────────────────────────────────
-
+  // materiales.js, admin.js: Auth.can('permiso')
   function can(permiso) {
-    const perfil = getPerfil();
-    const perms  = PERMISOS[perfil] || [];
-    return perms.includes(permiso);
+    return (PERMS[getPerfil()] || []).includes(permiso);
   }
 
-  // ─────────────────────────────────────────────────────────────
-  //  Autenticación
-  // ─────────────────────────────────────────────────────────────
+  // ─── Autenticación ──────────────────────────────────────────
 
   function isAuthenticated() {
-    const session = _loadSession();
-    if (!session || !session.token) return false;
-    if (Date.now() > session.expiresAt) {
-      clearSession();
-      return false;
-    }
+    const s = _load();
+    if (!s?.token) return false;
+    if (Date.now() > s.expiresAt) { clearSession(); return false; }
     return true;
   }
 
-  // requireAuth: llamado por router.js en cada ruta protegida
   async function requireAuth() {
-    if (!isAuthenticated()) {
-      Router.navigate('login');
-      return false;
-    }
+    if (!isAuthenticated()) { Router.navigate('login'); return false; }
     return true;
   }
 
-  // ─────────────────────────────────────────────────────────────
-  //  OAuth callback
-  //  Llamado por router.js cuando detecta ?code= en la URL.
-  //  NOTA: login.js tiene su propio flujo con startLogin() que
-  //  llama API.getAuthUrl() y luego Pages.authCallback() procesa
-  //  el code. handleCallback() es el handler alternativo para
-  //  cuando el router detecta el callback antes de cargar las páginas.
-  // ─────────────────────────────────────────────────────────────
-
+  // ─── OAuth callback ─────────────────────────────────────────
+  // Llamado por router.js cuando detecta ?code= ANTES de setear el hash.
+  // En v2.3 el router ya convierte los ?params al hash directamente,
+  // así que este método ya no se usa — se mantiene por compatibilidad.
   async function handleCallback() {
-    const searchParams = new URLSearchParams(window.location.search);
-    const code  = searchParams.get('code');
-    const error = searchParams.get('error');
-    const state = searchParams.get('state');
-
-    if (!code && !error) return false;
-
-    // Limpiar URL antes de procesar
-    const clean = window.location.protocol + '//' + window.location.host + window.location.pathname;
-    window.history.replaceState({}, document.title, clean);
-
-    if (error) {
-      // Navegar a login con el error
-      window.location.hash = '#/login?error=' + encodeURIComponent(error);
-      return true;
-    }
-
-    if (code) {
-      // Navegar a la ruta authCallback del router (la maneja Pages.authCallback)
-      window.location.hash = '#/auth/callback?code=' + encodeURIComponent(code);
-      return true;
-    }
-
-    return false;
+    return false; // router.js v2.3 lo maneja internamente
   }
 
-  // ─────────────────────────────────────────────────────────────
-  //  API pública
-  // ─────────────────────────────────────────────────────────────
   return {
-    // Sesión
-    setSession,       // login.js: Auth.setSession(tokenData)
-    getSession,       // admin.js: Auth.getSession()
-    clearSession,     // app.js: Auth.clearSession()
-    getToken,         // api.js: Auth.getToken()
-
-    // Info usuario
-    getPerfil,        // app.js, dashboard.js, admin.js
-    getNombre,        // app.js, dashboard.js
-    getCurrentUser,
-
-    // Permisos
-    can,              // materiales.js, admin.js: Auth.can('permiso')
-
-    // Auth flow
-    isAuthenticated,
-    requireAuth,
-    handleCallback,   // router.js
+    setSession, getSession, clearSession, getToken,
+    getPerfil, getNombre, can,
+    isAuthenticated, requireAuth,
+    handleCallback,
   };
 })();

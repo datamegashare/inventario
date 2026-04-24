@@ -1,105 +1,97 @@
 // ============================================================
-//  router.js  — Inventario AWP  v2.1
-//  Hash-based SPA router con soporte para OAuth callback.
-//  Compatible con app.js: expone Router.on() además de Router.register()
+//  router.js  — Inventario AWP  v2.3  (revisión completa)
+//  - Router.on() compatible con app.js
+//  - Pasa objeto params { code, tab, error, ... } a cada handler
+//  - Detecta ?code= en URL para OAuth callback
 // ============================================================
 
 const Router = (() => {
-  const routes = {};
+  const routes   = {};
   let currentRoute = null;
   let _initialized = false;
 
-  // ─── Registro de rutas ──────────────────────────────────────
-  // Acepta rutas con o sin slash: 'dashboard' y '/dashboard' son lo mismo
-  function register(path, handler) {
-    const normalized = _normalize(path);
-    routes[normalized] = handler;
-  }
+  function on(path, handler)       { routes[_norm(path)] = handler; }
+  function register(path, handler) { routes[_norm(path)] = handler; }
 
-  // Alias compatible con la versión anterior (app.js usa Router.on)
-  function on(path, handler) {
-    register(path, handler);
-  }
-
-  // ─── Navegación programática ────────────────────────────────
   function navigate(path) {
-    const normalized = _normalize(path);
-    window.location.hash = '#/' + normalized.replace(/^\//, '');
+    window.location.hash = '#/' + _norm(path);
   }
 
-  // ─── Inicialización ─────────────────────────────────────────
+  // ─── init ───────────────────────────────────────────────────
   async function init() {
     if (_initialized) return;
     _initialized = true;
 
-    // 1. ¿Es un OAuth callback? (Google redirige con ?code= en la URL)
+    // ¿Google redirigió con ?code= en la query string (antes del #)?
     const searchParams = new URLSearchParams(window.location.search);
-    const isOAuthCallback = searchParams.has('code') || searchParams.has('error');
-
-    if (isOAuthCallback) {
+    if (searchParams.has('code') || searchParams.has('error')) {
       console.log('[Router] Detectado OAuth callback — procesando...');
-      const handled = await Auth.handleCallback();
-      if (handled) return;
+      // Mover los params al hash para que el router los pueda leer
+      // y limpiar la query string fea de la URL
+      const code  = searchParams.get('code')  || '';
+      const state = searchParams.get('state') || '';
+      const error = searchParams.get('error') || '';
+      const clean = window.location.protocol + '//' +
+                    window.location.host +
+                    window.location.pathname;
+      // Reemplazar URL limpia + mover params al hash
+      const hashParams = error
+        ? `#/auth/callback?error=${encodeURIComponent(error)}`
+        : `#/auth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+      window.history.replaceState({}, document.title, clean + hashParams);
+      // Caer al resolver normal — el hash ahora tiene la ruta correcta
     }
 
-    // 2. Escuchar cambios de hash
     window.addEventListener('hashchange', _resolveRoute);
-
-    // 3. Resolver ruta inicial
     await _resolveRoute();
   }
 
-  // ─── Resolución de rutas ────────────────────────────────────
+  // ─── resolver ───────────────────────────────────────────────
   async function _resolveRoute() {
-    const path = _getCurrentPath();
-    console.log('[Router] Navegando a:', path);
+    const { path, params } = _parseHash();
+    console.log('[Router] Navegando a:', path, params);
 
     // Rutas públicas
     if (path === 'login' || path === 'auth/callback') {
-      await _runHandler(path);
+      await _run(path, params);
       return;
     }
 
     // Rutas protegidas
-    const authenticated = await Auth.requireAuth();
-    if (!authenticated) return;
+    const ok = await Auth.requireAuth();
+    if (!ok) return;
 
     const handler = routes[path] || routes['404'];
     if (handler) {
       currentRoute = path;
-      await handler(path);
+      await handler(params);
     } else {
-      const fallback = routes['404'];
-      if (fallback) fallback(path);
-      else navigate('dashboard');
+      navigate('dashboard');
     }
   }
 
-  async function _runHandler(path) {
+  async function _run(path, params) {
     const handler = routes[path];
-    if (handler) {
-      currentRoute = path;
-      await handler(path);
+    if (handler) { currentRoute = path; await handler(params); }
+  }
+
+  // Parsea window.location.hash en { path, params }
+  // Ej: "#/admin?tab=usuarios" → { path:"admin", params:{tab:"usuarios"} }
+  function _parseHash() {
+    const hash  = window.location.hash || '';
+    const clean = hash.replace(/^#\/?/, '');          // quitar #/
+    const qIdx  = clean.indexOf('?');
+    const path   = qIdx === -1 ? clean : clean.slice(0, qIdx);
+    const qs     = qIdx === -1 ? '' : clean.slice(qIdx + 1);
+    const params = {};
+    if (qs) {
+      new URLSearchParams(qs).forEach((v, k) => { params[k] = v; });
     }
+    return { path: path || 'dashboard', params };
   }
 
-  function _getCurrentPath() {
-    const hash = window.location.hash;
-    if (!hash || hash === '#' || hash === '#/') return 'dashboard';
-    // Eliminar #/ del inicio y query params del final
-    return hash.replace(/^#\/?/, '').split('?')[0];
-  }
+  function _norm(path) { return path.replace(/^\//, ''); }
 
-  function _normalize(path) {
-    return path.replace(/^\//, ''); // quitar slash inicial si existe
-  }
-
-  // ─── API pública ────────────────────────────────────────────
-  return {
-    on,           // app.js usa Router.on()
-    register,     // alias moderno
-    navigate,
-    init,
-    get current() { return currentRoute; },
-  };
+  return { on, register, navigate, init,
+           get current() { return currentRoute; } };
 })();
