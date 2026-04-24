@@ -81,4 +81,20 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   Router.init();
+
+  // Warm-up del GAS: ping cada 25 min para evitar cold start
+  // Solo cuando hay sesión activa
+  function gasWarmup() {
+    if (!Auth.isAuthenticated()) return;
+    fetch(window.APP_CONFIG.GAS_URL, {
+      method: 'POST',
+      body: (() => { const f = new FormData(); f.append('payload', JSON.stringify({ action: 'health' })); return f; })(),
+      redirect: 'follow',
+    }).catch(() => {}); // silencioso — no importa si falla
+  }
+  // Primer ping a los 5 min, luego cada 25 min
+  setTimeout(() => {
+    gasWarmup();
+    setInterval(gasWarmup, 25 * 60 * 1000);
+  }, 5 * 60 * 1000);
 });
