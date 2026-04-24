@@ -23,7 +23,14 @@ const API = (() => {
     const fd = new FormData();
     fd.append('payload', JSON.stringify(payload));
 
-    const res = await fetch(GAS_URL, { method:'POST', body:fd, redirect:'follow' });
+    // GAS Web App hace redirect 302 en POSTs — seguir el redirect manualmente
+    // si usamos redirect:'follow', el browser convierte el POST en GET (HTTP spec)
+    // La solución: hacer el POST, si hay redirect 302, hacer GET a la nueva URL
+    let res = await fetch(GAS_URL, { method:'POST', body:fd, redirect:'manual' });
+    if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
+      const location = res.headers.get('location') || GAS_URL;
+      res = await fetch(location, { method:'GET', redirect:'follow' });
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
