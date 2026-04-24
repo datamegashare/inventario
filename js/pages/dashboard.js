@@ -88,6 +88,7 @@ Pages.dashboard = async function(params) {
     ]);
 
     const kpiGrid = document.getElementById('kpi-grid');
+    if (!kpiGrid) return; // El usuario navegó a otra página antes de que cargaran los KPIs
     kpiGrid.innerHTML = `
       <div class="kpi-card">
         <div class="kpi-value">${materiales.length}</div>
