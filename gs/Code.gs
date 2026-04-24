@@ -35,7 +35,8 @@ function doGet(e) {
     return handleOAuthCallback(e);
   }
 
-  return jsonResponse({ error: 'Invalid GET action' }, 400);
+  // GET sin acción conocida — responder OK para no romper el flujo
+  return jsonResponse({ status: 'ok' });
 }
 
 /**
@@ -193,8 +194,6 @@ function registrarCambios(tabla, registro_id, dataNueva, dataAnterior, usuario_e
 }
 
 // ─── HELPERS DE AUTORIZACIÓN ────────────────────────────────
-// (Movidos aquí desde Auth.gs para compatibilidad con Usuarios.gs, Materiales.gs, etc.)
-
 function requirePerfil(usuario, perfilesPermitidos) {
   if (!perfilesPermitidos.includes(usuario.perfil)) {
     throw new Error('Permiso denegado. Se requiere uno de: ' + perfilesPermitidos.join(', '));
