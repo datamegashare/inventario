@@ -62,6 +62,7 @@ function doPost(e) {
     const token  = (body.token || '').trim();
 
     // Rutas públicas (sin auth)
+    if (action === 'health')       return jsonResponse({ status: 'ok', ts: Date.now() });
     if (action === 'auth_url')     return jsonResponse(getAuthUrl());
     if (action === 'auth_token')   return jsonResponse(exchangeCodeForToken(body.code));
     if (action === 'verify_token') return jsonResponse(verifyToken(token));
