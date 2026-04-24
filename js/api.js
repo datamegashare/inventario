@@ -1,83 +1,97 @@
 // ============================================================
-// api.js — Cliente centralizado para Google Apps Script API
-// Usa FormData para evitar preflight CORS (GAS no soporta OPTIONS)
+//  api.js  — Inventario AWP  v2.0
+//  Cliente HTTP para GAS Web App.
+//  Usa FormData para evitar CORS preflight (GET con ?action=).
+//  Incluye sessionId automáticamente en cada request.
 // ============================================================
 
 const API = (() => {
-  const GAS_URL = window.APP_CONFIG?.GAS_URL || '';
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbzkgO5RZpdVviZ-Y1hhbUMoNvqrB3uCO4KaHeJHP1K0wEUb6jBf0J_tRmpW4P7od5yz/exec';
 
-  async function request(action, body = {}) {
-    const token = Auth.getToken();
-    const payload = { action, token, ...body };
+  // ─────────────────────────────────────────────────────────────
+  //  call(action, params)
+  //  Método principal. Llama al GAS con la acción dada.
+  //  - Incluye sessionId automáticamente (excepto getAuthUrl y exchangeToken)
+  //  - Usa POST con FormData para evitar CORS preflight
+  // ─────────────────────────────────────────────────────────────
+  async function call(action, params = {}) {
+    const PUBLIC_ACTIONS = ['getAuthUrl', 'exchangeToken'];
+    
+    // Agregar sessionId a todas las acciones que no son públicas
+    if (!PUBLIC_ACTIONS.includes(action)) {
+      const sessionId = Auth.getSessionId();
+      if (sessionId) {
+        params.sessionId = sessionId;
+      }
+    }
 
-    // Enviamos como FormData con campo "payload" = JSON string.
-    // Esto evita el preflight OPTIONS que GAS no puede responder.
     const formData = new FormData();
-    formData.append('payload', JSON.stringify(payload));
+    formData.append('action', action);
+    
+    for (const [key, value] of Object.entries(params)) {
+      formData.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+    }
 
-    const res = await fetch(GAS_URL, {
-      method: 'POST',
-      body: formData
-      // Sin Content-Type header — el browser lo setea como multipart/form-data
-      // lo que califica como "simple request" y no dispara preflight
-    });
+    try {
+      const response = await fetch(GAS_URL, {
+        method:   'POST',
+        body:     formData,
+        redirect: 'follow',
+      });
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data;
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      // Si el servidor retorna sesión inválida, limpiar y redirigir
+      if (data.error === 'SESSION_INVALID' || data.error === 'SESSION_EXPIRED') {
+        console.warn('[API] Sesión inválida en servidor — redirigiendo a login');
+        Auth.logout(); // logout local (sin llamar al servidor para evitar loop)
+        return data;
+      }
+      
+      return data;
+      
+    } catch (err) {
+      console.error(`[API] Error en acción "${action}":`, err);
+      throw err;
+    }
   }
 
+  // ─────────────────────────────────────────────────────────────
+  //  Métodos de conveniencia para el dominio AWP
+  // ─────────────────────────────────────────────────────────────
+  
+  const Materials = {
+    getAll:    (filters = {}) => call('getMaterials', filters),
+    getById:   (id)           => call('getMaterial', { id }),
+    create:    (data)         => call('createMaterial', data),
+    update:    (id, data)     => call('updateMaterial', { id, ...data }),
+    delete:    (id)           => call('deleteMaterial', { id }),
+    search:    (query)        => call('searchMaterials', { query }),
+  };
+
+  const Dashboard = {
+    getSummary: () => call('getDashboardSummary'),
+    getStats:   () => call('getDashboardStats'),
+  };
+
+  const Users = {
+    getAll:  ()         => call('getUsers'),
+    create:  (data)     => call('createUser', data),
+    update:  (id, data) => call('updateUser', { id, ...data }),
+    delete:  (id)       => call('deleteUser', { id }),
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  //  API PÚBLICA
+  // ─────────────────────────────────────────────────────────────
   return {
-    // Auth
-    getAuthUrl:    ()          => request('auth_url'),
-    exchangeToken: (code)      => request('auth_token', { code }),
-    verifyToken:   ()          => request('verify_token'),
-
-    // Usuarios
-    usuarios: {
-      list:   ()                       => request('usuarios_list'),
-      get:    (id)                     => request('usuarios_get',    { usuario_id: id }),
-      create: (data)                   => request('usuarios_create', { data }),
-      update: (id, data)               => request('usuarios_update', { usuario_id: id, data }),
-      delete: (id)                     => request('usuarios_delete', { usuario_id: id }),
-    },
-
-    // Familias
-    familias: {
-      list:   ()             => request('familias_list'),
-      create: (data)         => request('familias_create', { data }),
-      update: (id, data)     => request('familias_update', { familia_id: id, data }),
-      delete: (id)           => request('familias_delete', { familia_id: id }),
-    },
-
-    // Ubicaciones
-    ubicaciones: {
-      list:   ()             => request('ubicaciones_list'),
-      create: (data)         => request('ubicaciones_create', { data }),
-      update: (id, data)     => request('ubicaciones_update', { ubicacion_id: id, data }),
-      delete: (id)           => request('ubicaciones_delete', { ubicacion_id: id }),
-    },
-
-    // Materiales
-    materiales: {
-      list:    (filters)     => request('materiales_list',   { filters }),
-      get:     (id)          => request('materiales_get',    { material_id: id }),
-      create:  (data)        => request('materiales_create', { data }),
-      update:  (id, data)    => request('materiales_update', { material_id: id, data }),
-      delete:  (id)          => request('materiales_delete', { material_id: id }),
-      import:  (rows)        => request('materiales_import', { rows }),
-    },
-
-    // Config
-    config: {
-      get:    ()             => request('config_get'),
-      update: (data)         => request('config_update', { data }),
-    },
-
-    // Historial
-    historial: {
-      list: (filters)        => request('historial_list', { filters }),
-    }
+    call,
+    Materials,
+    Dashboard,
+    Users,
   };
 })();
