@@ -46,38 +46,17 @@ const API = (() => {
 
   // ── login.js: const { auth_url } = await API.getAuthUrl() ──
   async function getAuthUrl() {
-    const r = await _call('auth_url');
-    // Auth.gs v2 devuelve { authUrl, state } — normalizar a { auth_url }
-    if (r.authUrl) r.auth_url = r.authUrl;
-    // Guardar state para validación CSRF en exchangeToken
-    if (r.state) sessionStorage.setItem('oauth_state', r.state);
-    return r;
+    // Auth.gs v1 devuelve { auth_url } directamente
+    return _call('auth_url');
   }
 
   // ── login.js: const tokenData = await API.exchangeToken(params.code) ──
   // login.js luego hace Auth.setSession(tokenData)
   // Auth.setSession espera { token, nombre, perfil, email, expires_in }
   async function exchangeToken(code) {
-    // Recuperar state guardado por getAuthUrl (si existe)
-    const state = sessionStorage.getItem('oauth_state') || '';
-    sessionStorage.removeItem('oauth_state');
-
-    const r = await _call('auth_token', { code, state });
-
-    // Auth.gs v2 devuelve { success, sessionId, user:{email,name,picture,role}, expiresAt }
-    // Normalizar al formato que espera Auth.setSession y login.js
-    if (r.sessionId && !r.token) {
-      r.token      = r.sessionId;
-      r.nombre     = r.user?.name  || r.user?.email || 'Usuario';
-      r.perfil     = r.user?.role  || 'viewer';
-      r.email      = r.user?.email || '';
-      r.usuario_id = r.user?.email || '';
-      // expires_in en segundos desde expiresAt timestamp
-      r.expires_in = r.expiresAt
-        ? Math.floor((r.expiresAt - Date.now()) / 1000)
-        : 28800;
-    }
-    return r;
+    // Auth.gs v1 devuelve { token, nombre, perfil, email, usuario_id, expires_in }
+    // que es exactamente lo que espera Auth.setSession() y login.js
+    return _call('auth_token', { code });
   }
 
   // ── Namespaces de dominio ────────────────────────────────────
