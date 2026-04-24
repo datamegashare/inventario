@@ -62,12 +62,13 @@ function doPost(e) {
 
     // Rutas públicas (sin auth)
     if (action === 'auth_url')     return jsonResponse(getAuthUrl());
-    if (action === 'auth_token')   return jsonResponse(exchangeCodeForToken(body.code));
-    if (action === 'verify_token') return jsonResponse(verifyToken(token));
+    if (action === 'auth_token')   return jsonResponse(exchangeToken(body.code, body.state));
+    if (action === 'verify_token') return jsonResponse(validateSession(token));
 
     // Verificar token para todas las demás rutas
-    const usuario = requireAuth(token);
-    if (usuario.error) return jsonResponse(usuario, 401);
+    const authResult = validateSession(token);
+    if (!authResult.valid) return jsonResponse({ error: authResult.reason || 'Token inválido o expirado. Por favor inicie sesión nuevamente.' }, 401);
+    const usuario = { ...authResult.user, perfil: authResult.user.role, nombre: authResult.user.name };
 
     // Router
     switch (action) {
@@ -189,4 +190,13 @@ function registrarCambios(tabla, registro_id, dataNueva, dataAnterior, usuario_e
       registrarHistorial(tabla, registro_id, campo, va, vn, usuario_email);
     }
   });
+}
+
+// ─── HELPERS DE AUTORIZACIÓN ────────────────────────────────
+// (Movidos aquí desde Auth.gs para compatibilidad con Usuarios.gs, Materiales.gs, etc.)
+
+function requirePerfil(usuario, perfilesPermitidos) {
+  if (!perfilesPermitidos.includes(usuario.perfil)) {
+    throw new Error('Permiso denegado. Se requiere uno de: ' + perfilesPermitidos.join(', '));
+  }
 }
