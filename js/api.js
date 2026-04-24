@@ -55,11 +55,23 @@ const API = (() => {
   //  API pública usada por login.js
   // ─────────────────────────────────────────────────────────────
   async function getAuthUrl() {
-    return _call('auth_url');
+    const result = await _call('auth_url');
+    // Auth.gs devuelve { authUrl } — login.js espera { auth_url }
+    if (result.authUrl && !result.auth_url) result.auth_url = result.authUrl;
+    return result;
   }
 
   async function exchangeToken(code) {
-    return _call('auth_token', { code });
+    const result = await _call('auth_token', { code });
+    // Normalizar campos: Auth.gs v2 devuelve { sessionId, user:{name,role} }
+    // login.js espera { token, nombre, perfil, email }
+    if (result.sessionId && !result.token) {
+      result.token  = result.sessionId;
+      result.nombre = result.user?.name  || result.user?.email || '';
+      result.perfil = result.user?.role  || '';
+      result.email  = result.user?.email || '';
+    }
+    return result;
   }
 
   // ─────────────────────────────────────────────────────────────
