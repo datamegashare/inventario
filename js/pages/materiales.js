@@ -146,7 +146,7 @@ Pages.materiales = async function(params) {
 
 function openMaterialForm(material, familias, onSave) {
   const isEdit = !!material;
-  const m      = modal({
+  const m      = UI.modal({
     title: isEdit ? 'Editar Material' : 'Nuevo Material',
     size: 'lg',
     body(container) {
