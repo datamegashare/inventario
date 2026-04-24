@@ -1,34 +1,31 @@
 // ============================================================
-//  api.js  — Inventario AWP  v2.2
-//  Cliente HTTP para GAS Web App.
-//  Expone la API que usan login.js, dashboard.js, materiales.js, admin.js
+//  api.js  — Inventario AWP  v2.3
+//  Formato de envío compatible con Code.gs:
+//  POST FormData con campo "payload" = JSON.stringify({ action, token, ...params })
+//  Code.gs lee: body = JSON.parse(e.parameter.payload)
 // ============================================================
 
 const API = (() => {
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbzkgO5RZpdVviZ-Y1hhbUMoNvqrB3uCO4KaHeJHP1K0wEUb6jBf0J_tRmpW4P7od5yz/exec';
 
+  const PUBLIC_ACTIONS = ['auth_url', 'auth_token', 'verify_token'];
+
   // ─────────────────────────────────────────────────────────────
-  //  _call(action, params) — interno
-  //  Envía FormData con { action, ...params, token } al GAS.
-  //  El backend lee e.parameter.action y e.parameter.* directamente.
+  //  _call(action, params)
+  //  Envía FormData con campo "payload" = JSON string.
+  //  Code.gs: body = JSON.parse(e.parameter.payload)
   // ─────────────────────────────────────────────────────────────
   async function _call(action, params = {}) {
-    const PUBLIC_ACTIONS = ['auth_url', 'auth_token'];
-
-    const formData = new FormData();
-    formData.append('action', action);
+    const payload = { action, ...params };
 
     // Inyectar token en acciones protegidas
     if (!PUBLIC_ACTIONS.includes(action)) {
       const token = Auth.getToken();
-      if (token) formData.append('token', token);
+      if (token) payload.token = token;
     }
 
-    // Serializar params
-    for (const [key, value] of Object.entries(params)) {
-      if (value === undefined || value === null) continue;
-      formData.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
-    }
+    const formData = new FormData();
+    formData.append('payload', JSON.stringify(payload));
 
     const response = await fetch(GAS_URL, {
       method:   'POST',
@@ -56,22 +53,18 @@ const API = (() => {
 
   // ─────────────────────────────────────────────────────────────
   //  API pública usada por login.js
-  //  login.js llama: API.getAuthUrl() y API.exchangeToken(code)
   // ─────────────────────────────────────────────────────────────
   async function getAuthUrl() {
-    // El backend (Code.gs) tiene action='auth_url' → devuelve { auth_url }
     return _call('auth_url');
   }
 
   async function exchangeToken(code) {
-    // El backend tiene action='auth_token', code=... → devuelve { token, nombre, perfil, ... }
     return _call('auth_token', { code });
   }
 
   // ─────────────────────────────────────────────────────────────
-  //  Namespaces usados por dashboard.js, materiales.js, admin.js
+  //  Namespaces de dominio
   // ─────────────────────────────────────────────────────────────
-
   const materiales = {
     list:   (filters = {}) => _call('materiales_list',   { filters }),
     get:    (id)           => _call('materiales_get',    { material_id: id }),
@@ -112,9 +105,6 @@ const API = (() => {
     list: (filters = {}) => _call('historial_list', { filters }),
   };
 
-  // ─────────────────────────────────────────────────────────────
-  //  call() — método genérico (por si algún código lo usa)
-  // ─────────────────────────────────────────────────────────────
   function call(action, params = {}) {
     return _call(action, params);
   }
