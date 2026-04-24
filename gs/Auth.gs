@@ -9,7 +9,7 @@ const TOKEN_TTL_HOURS    = 8;
 // IMPORTANTE: Este valor debe coincidir exactamente con el registrado en GCP
 
 function getRedirectUri() {
-  return 'https://script.google.com/macros/s/AKfycbzkgO5RZpdVviZ-Y1hhbUMoNvqrB3uCO4KaHeJHP1K0wEUb6jBf0J_tRmpW4P7od5yz/exec?action=oauth_callback';
+  return 'https://datamegashare.github.io/inventario/';
 }
 
 // ─── URL DE AUTORIZACIÓN ────────────────────────────────────

@@ -63,13 +63,12 @@ function doPost(e) {
 
     // Rutas públicas (sin auth)
     if (action === 'auth_url')     return jsonResponse(getAuthUrl());
-    if (action === 'auth_token')   return jsonResponse(exchangeToken(body.code, body.state));
-    if (action === 'verify_token') return jsonResponse(validateSession(token));
+    if (action === 'auth_token')   return jsonResponse(exchangeCodeForToken(body.code));
+    if (action === 'verify_token') return jsonResponse(verifyToken(token));
 
     // Verificar token para todas las demás rutas
-    const authResult = validateSession(token);
-    if (!authResult.valid) return jsonResponse({ error: authResult.reason || 'Token inválido o expirado. Por favor inicie sesión nuevamente.' }, 401);
-    const usuario = { ...authResult.user, perfil: authResult.user.role, nombre: authResult.user.name };
+    const usuario = requireAuth(token);
+    if (usuario.error) return jsonResponse(usuario, 401);
 
     // Router
     switch (action) {
