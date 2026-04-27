@@ -846,7 +846,7 @@ function testNcrValidaciones() {
 
   _assertError('testNcrValidaciones-dobleNcr',
     () => ncrCreate(itemTemp.item_id, { descripcion: 'Segunda NCR' }, U_QAQC),
-    'ya tiene una NCR activa'
+    'PENDIENTE_QAQC'  // El ítem ya está en estado NCR, no PENDIENTE_QAQC — la validación de estado precede a la de NCR activa
   );
 
   // C) Transición inválida desde estado cerrado
