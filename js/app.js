@@ -126,11 +126,32 @@ document.addEventListener('DOMContentLoaded', () => {
   Router.on('admin',         Pages.admin);
 
   // ── Etapa 2 ───────────────────────────────────────────────
-  Router.on('recepciones',   Pages.recepciones);
+  // Recepciones — rutas con sub-paths
+  // El router no soporta :params dinámicos, se registran las variantes explícitamente
+  // y se pasa el segmento como { id } al handler
+  Router.on('recepciones',        Pages.recepciones);
+  Router.on('recepciones/nueva',  (p) => Pages.recepciones({ ...p, id: 'nueva' }));
+
+  // Para recepciones/:id dinámico el router no matchea — usamos hashchange manual
+  // Ver _initRecepcionesDetalle() más abajo
+
   Router.on('ncr',           Pages.ncr);
   Router.on('series',        Pages.series);
 
+  // Interceptar rutas dinámicas tipo recepciones/:id antes del 404
+  // El router no soporta :params, se resuelve acá con el hash crudo
   Router.on('404', () => {
+    const hash = window.location.hash.replace(/^#\/?/, '');
+    if (hash.startsWith('recepciones/')) {
+      const id = hash.replace('recepciones/', '').split('?')[0];
+      if (id) { Pages.recepciones({ id }); return; }
+    }
+    if (hash.startsWith('ncr')) {
+      const qs = hash.includes('?') ? hash.split('?')[1] : '';
+      const params = {};
+      if (qs) new URLSearchParams(qs).forEach((v,k) => { params[k] = v; });
+      Pages.ncr(params); return;
+    }
     document.getElementById('app').innerHTML = `
       <div class="full-center">
         <h2>Página no encontrada</h2>
