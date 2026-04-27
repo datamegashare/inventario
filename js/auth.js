@@ -11,19 +11,47 @@ const Auth = (() => {
 
   // Permisos por perfil — igual que el sistema original
   const PERMS = {
-    Admin:          ['materiales.read','materiales.create','materiales.update','materiales.delete',
-                     'familias.read','familias.create','familias.update','familias.delete',
-                     'ubicaciones.read','ubicaciones.create','ubicaciones.update','ubicaciones.delete',
-                     'usuarios.read','usuarios.create','usuarios.update','usuarios.delete'],
-    MatCoord:       ['materiales.read','materiales.create','materiales.update',
-                     'familias.read','familias.create','familias.update',
-                     'ubicaciones.read','ubicaciones.create','ubicaciones.update'],
-    Almacenero:     ['materiales.read'],
-    QAQC:           ['materiales.read'],
-    Planner:        ['materiales.read'],
-    FieldEng:       ['materiales.read'],
-    ViewerCliente:  ['materiales.read'],
-    ViewerGerencia: ['materiales.read'],
+    Admin: [
+      'materiales.read','materiales.create','materiales.update','materiales.delete',
+      'familias.read','familias.create','familias.update','familias.delete',
+      'ubicaciones.read','ubicaciones.create','ubicaciones.update','ubicaciones.delete',
+      'usuarios.read','usuarios.create','usuarios.update','usuarios.delete',
+      // Etapa 2
+      'recepciones.read','recepciones.create','recepciones.update','recepciones.delete',
+      'items.create','items.update','items.aprobar','items.delete',
+      'ncr.read','ncr.create','ncr.update',
+      'series.read','stock.read','movimientos.read',
+    ],
+    MatCoord: [
+      'materiales.read','materiales.create','materiales.update',
+      'familias.read','familias.create','familias.update',
+      'ubicaciones.read','ubicaciones.create','ubicaciones.update',
+      // Etapa 2
+      'recepciones.read','recepciones.create',
+      'items.create','items.aprobar',
+      'ncr.read','ncr.update',
+      'series.read','stock.read','movimientos.read',
+    ],
+    Almacenero: [
+      'materiales.read',
+      // Etapa 2
+      'recepciones.read','recepciones.create',
+      'items.create','items.update','items.delete',
+      'ncr.read',
+      'series.read','stock.read','movimientos.read',
+    ],
+    QAQC: [
+      'materiales.read',
+      // Etapa 2
+      'recepciones.read',
+      'items.aprobar',
+      'ncr.read','ncr.create','ncr.update',
+      'series.read','stock.read','movimientos.read',
+    ],
+    Planner:        ['materiales.read','series.read','stock.read','movimientos.read'],
+    FieldEng:       ['materiales.read','series.read','stock.read','movimientos.read'],
+    ViewerCliente:  ['materiales.read','recepciones.read','series.read','stock.read'],
+    ViewerGerencia: ['materiales.read','recepciones.read','series.read','stock.read','movimientos.read'],
   };
 
   // ─── Storage ────────────────────────────────────────────────
