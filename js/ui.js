@@ -59,6 +59,7 @@ const UI = (() => {
     };
 
     overlay.querySelector('.modal-close').addEventListener('click', close);
+    overlay.querySelector('.modal').addEventListener('click', e => e.stopPropagation());
     overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
     document.body.appendChild(overlay);
     requestAnimationFrame(() => overlay.classList.add('modal-open'));
@@ -126,8 +127,15 @@ const UI = (() => {
         const td = document.createElement('td');
         if (col.render) {
           const content = col.render(row[col.key], row);
-          if (typeof content === 'string') td.innerHTML = content;
-          else td.appendChild(content);
+          if (content === null || content === undefined) {
+            td.textContent = '';
+          } else if (typeof content === 'string') {
+            td.innerHTML = content;
+          } else if (content instanceof Node) {
+            td.appendChild(content);
+          } else {
+            td.textContent = String(content);
+          }
         } else {
           td.textContent = row[col.key] ?? '';
         }
