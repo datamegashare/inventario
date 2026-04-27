@@ -570,6 +570,12 @@ function testRunAll() {
     testQaqcAprobarItem,
     testCierreAutomaticoRecepcion,
     testValidaciones,
+    // ── NCR ──
+    testNcrCrear,
+    testNcrAvanzarEstado,
+    testNcrCerrarAceptada,
+    testNcrCerrarRechazada,
+    testNcrValidaciones,
   ];
 
   let pasados = 0;
@@ -612,4 +618,258 @@ function _testGetStock(material_id, ubicacion_id) {
 function _testGetSeriesPorItem(recepcion_item_id) {
   const sheet = getSheet(SHEETS.MATERIAL_SERIES);
   return sheetToObjects(sheet).filter(r => r.recepcion_item_id === recepcion_item_id && !r.borrado);
+}
+
+// ============================================================
+// TESTS NCR — Ncr.gs
+// ============================================================
+
+/**
+ * Crea una recepción nueva con un ítem QAQC para usar en tests de NCR.
+ * (Los ítems de la suite anterior ya quedaron APROBADOS/CERRADOS)
+ */
+function testNcrCrear() {
+  Logger.log('── TEST: testNcrCrear ────────────────────');
+
+  const matQaqcId  = _testGetProp('MAT_QAQC_ID');
+  const matSerieId = _testGetProp('MAT_SERIE_ID');
+  const ubicId     = _testGetProp('UBIC_ALMACEN_ID');
+
+  // Nueva recepción para tests de NCR
+  const rec = recepcionesCreate({
+    fecha:                  '2026-04-27',
+    remito_numero:          'REM-TEST-NCR-001',
+    proveedor_razon_social: 'Proveedor NCR Test SA',
+  }, U_ALMACENERO);
+  _testSetProp('REC_NCR_ID', rec.recepcion_id);
+
+  // Ítem con QAQC — será rechazado con CERRADA_ACEPTADA
+  const itemAcep = itemsCreate(rec.recepcion_id, {
+    material_id:       matQaqcId,
+    ubicacion_id:      ubicId,
+    cantidad_remitida: 4,
+    cantidad_recibida: 4,
+  }, U_ALMACENERO);
+  _testSetProp('ITEM_NCR_ACEP_ID', itemAcep.item_id);
+
+  // Ítem seriado — será rechazado con CERRADA_RECHAZADA
+  const itemRech = itemsCreate(rec.recepcion_id, {
+    material_id:       matSerieId,
+    ubicacion_id:      ubicId,
+    cantidad_remitida: 2,
+    cantidad_recibida: 2,
+    series:            ['SN-NCR-A', 'SN-NCR-B'],
+  }, U_ALMACENERO);
+  _testSetProp('ITEM_NCR_RECH_ID', itemRech.item_id);
+
+  // Abrir NCR sobre el primer ítem
+  const stockAntes = _testGetStock(matQaqcId, ubicId);
+  _info('Stock bloqueado antes de NCR: ' + _testGetStockBloqueado(matQaqcId, ubicId));
+
+  const ncr = ncrCreate(itemAcep.item_id, {
+    descripcion: 'Material con daño visible en embalaje — prueba',
+    asignado_a:  U_QAQC.email,
+  }, U_QAQC);
+
+  _assert('testNcrCrear', ncr.ncr_id.startsWith('NCR-'),
+    'ID generado: ' + ncr.ncr_id,
+    'Formato ID incorrecto: ' + ncr.ncr_id
+  );
+  _assert('testNcrCrear', ncr.estado === 'ABIERTA',
+    'Estado inicial = ABIERTA',
+    'Estado incorrecto: ' + ncr.estado
+  );
+
+  // Verificar que el ítem quedó en NCR
+  const { item } = _findItem(itemAcep.item_id);
+  _assert('testNcrCrear', item.estado_qaqc === 'NCR',
+    'Ítem pasó a estado NCR',
+    'estado_qaqc incorrecto: ' + item.estado_qaqc
+  );
+  _assert('testNcrCrear', item.ncr_id === ncr.ncr_id,
+    'ncr_id referenciado en el ítem',
+    'ncr_id no linkado: ' + item.ncr_id
+  );
+
+  // Verificar stock bloqueado
+  const bloqueadoDespues = _testGetStockBloqueado(matQaqcId, ubicId);
+  _assert('testNcrCrear', bloqueadoDespues >= 4,
+    'Stock bloqueado += 4',
+    'Stock bloqueado incorrecto: ' + bloqueadoDespues
+  );
+
+  _testSetProp('NCR_ACEP_ID', ncr.ncr_id);
+  _info('NCR creada: ' + ncr.ncr_id);
+}
+
+function testNcrAvanzarEstado() {
+  Logger.log('── TEST: testNcrAvanzarEstado ────────────');
+
+  const ncr_id = _testGetProp('NCR_ACEP_ID');
+  _assert('testNcrAvanzarEstado', !!ncr_id, 'ncr_id disponible', 'Ejecutá testNcrCrear() primero');
+
+  // ABIERTA → EN_REVISION
+  const ncr = ncrUpdateEstado(ncr_id, 'EN_REVISION', 'Iniciando revisión técnica', U_QAQC);
+  _assert('testNcrAvanzarEstado', ncr.estado === 'EN_REVISION',
+    'Estado → EN_REVISION',
+    'Estado incorrecto: ' + ncr.estado
+  );
+
+  // Transición inválida: EN_REVISION → ABIERTA (debe fallar)
+  _assertError('testNcrAvanzarEstado-transicionInvalida',
+    () => ncrUpdateEstado(ncr_id, 'ABIERTA', '', U_QAQC),
+    'Transición no permitida'
+  );
+}
+
+function testNcrCerrarAceptada() {
+  Logger.log('── TEST: testNcrCerrarAceptada ───────────');
+
+  const ncr_id    = _testGetProp('NCR_ACEP_ID');
+  const matQaqcId = _testGetProp('MAT_QAQC_ID');
+  const ubicId    = _testGetProp('UBIC_ALMACEN_ID');
+
+  const bloqAntes  = _testGetStockBloqueado(matQaqcId, ubicId);
+  const dispAntes  = _testGetStock(matQaqcId, ubicId);
+  _info('Antes — disponible: ' + dispAntes + ', bloqueado: ' + bloqAntes);
+
+  // EN_REVISION → CERRADA_ACEPTADA
+  const ncr = ncrUpdateEstado(ncr_id, 'CERRADA_ACEPTADA', 'Aprobado con desvío documentado', U_QAQC);
+  _assert('testNcrCerrarAceptada', ncr.estado === 'CERRADA_ACEPTADA',
+    'Estado → CERRADA_ACEPTADA',
+    'Estado incorrecto: ' + ncr.estado
+  );
+
+  // Stock: bloqueado → disponible
+  const bloqDespues = _testGetStockBloqueado(matQaqcId, ubicId);
+  const dispDespues = _testGetStock(matQaqcId, ubicId);
+  _info('Después — disponible: ' + dispDespues + ', bloqueado: ' + bloqDespues);
+
+  _assert('testNcrCerrarAceptada', dispDespues >= dispAntes + 4,
+    'Stock disponible += 4',
+    'Stock disponible incorrecto. Antes: ' + dispAntes + ', Después: ' + dispDespues
+  );
+  _assert('testNcrCerrarAceptada', bloqDespues <= bloqAntes - 4,
+    'Stock bloqueado -= 4',
+    'Stock bloqueado incorrecto. Antes: ' + bloqAntes + ', Después: ' + bloqDespues
+  );
+
+  // Ítem → ACEPTADO
+  const { item } = _findItem(_testGetProp('ITEM_NCR_ACEP_ID'));
+  _assert('testNcrCerrarAceptada', item.estado_qaqc === 'ACEPTADO',
+    'Ítem → ACEPTADO',
+    'estado_qaqc incorrecto: ' + item.estado_qaqc
+  );
+}
+
+function testNcrCerrarRechazada() {
+  Logger.log('── TEST: testNcrCerrarRechazada ──────────');
+
+  const matSerieId = _testGetProp('MAT_SERIE_ID');
+  const ubicId     = _testGetProp('UBIC_ALMACEN_ID');
+  const itemId     = _testGetProp('ITEM_NCR_RECH_ID');
+
+  // Abrir NCR sobre el ítem seriado
+  const ncrRech = ncrCreate(itemId, {
+    descripcion: 'Series con defecto de fabricación — rechazo definitivo',
+  }, U_QAQC);
+  _testSetProp('NCR_RECH_ID', ncrRech.ncr_id);
+
+  // Avanzar a EN_REVISION
+  ncrUpdateEstado(ncrRech.ncr_id, 'EN_REVISION', 'Confirmado defecto', U_QAQC);
+
+  const bloqAntes = _testGetStockBloqueado(matSerieId, ubicId);
+  _info('Bloqueado antes de rechazar: ' + bloqAntes);
+
+  // EN_REVISION → CERRADA_RECHAZADA
+  const ncr = ncrUpdateEstado(ncrRech.ncr_id, 'CERRADA_RECHAZADA', 'Material devuelto a proveedor', U_QAQC);
+  _assert('testNcrCerrarRechazada', ncr.estado === 'CERRADA_RECHAZADA',
+    'Estado → CERRADA_RECHAZADA',
+    'Estado incorrecto: ' + ncr.estado
+  );
+
+  // Stock bloqueado debe haber bajado
+  const bloqDespues = _testGetStockBloqueado(matSerieId, ubicId);
+  _info('Bloqueado después: ' + bloqDespues);
+  _assert('testNcrCerrarRechazada', bloqDespues <= bloqAntes - 2,
+    'Stock bloqueado -= 2 (material dado de baja)',
+    'Stock bloqueado incorrecto. Antes: ' + bloqAntes + ', Después: ' + bloqDespues
+  );
+
+  // Ítem → RECHAZADO_DEFINITIVO
+  const { item } = _findItem(itemId);
+  _assert('testNcrCerrarRechazada', item.estado_qaqc === 'RECHAZADO_DEFINITIVO',
+    'Ítem → RECHAZADO_DEFINITIVO',
+    'estado_qaqc incorrecto: ' + item.estado_qaqc
+  );
+
+  // Series → SEGREGADO
+  const series = _testGetSeriesPorItem(itemId);
+  _assert('testNcrCerrarRechazada', series.every(s => s.estado === 'SEGREGADO'),
+    'Todas las series → SEGREGADO',
+    'Estado series incorrecto: ' + JSON.stringify(series.map(s => s.estado))
+  );
+
+  // La recepción ahora tiene todos los ítems en estado terminal → debe estar CERRADA
+  const recId = _testGetProp('REC_NCR_ID');
+  const rec   = recepcionesGet(recId, U_ALMACENERO);
+  _assert('testNcrCerrarRechazada', rec.estado === 'CERRADA',
+    'Recepción cerrada automáticamente con ítems NCR resueltos',
+    'Estado recepción: ' + rec.estado
+  );
+}
+
+function testNcrValidaciones() {
+  Logger.log('── TEST: testNcrValidaciones ─────────────');
+
+  // A) NCR sobre ítem que no está en PENDIENTE_QAQC
+  const itemSimpleId = _testGetProp('ITEM_SIMPLE_ID');
+  if (itemSimpleId) {
+    _assertError('testNcrValidaciones-itemNoQaqc',
+      () => ncrCreate(itemSimpleId, { descripcion: 'Test' }, U_QAQC),
+      'PENDIENTE_QAQC'
+    );
+  }
+
+  // B) Doble NCR sobre mismo ítem activo — crear nuevo ítem primero
+  const matQaqcId = _testGetProp('MAT_QAQC_ID');
+  const ubicId    = _testGetProp('UBIC_ALMACEN_ID');
+  const recTemp   = recepcionesCreate({
+    fecha: '2026-04-27', remito_numero: 'REM-TEST-NCR-TEMP',
+    proveedor_razon_social: 'Proveedor Temp',
+  }, U_ALMACENERO);
+  const itemTemp  = itemsCreate(recTemp.recepcion_id, {
+    material_id: matQaqcId, ubicacion_id: ubicId,
+    cantidad_remitida: 1, cantidad_recibida: 1,
+  }, U_ALMACENERO);
+  ncrCreate(itemTemp.item_id, { descripcion: 'Primera NCR' }, U_QAQC);
+
+  _assertError('testNcrValidaciones-dobleNcr',
+    () => ncrCreate(itemTemp.item_id, { descripcion: 'Segunda NCR' }, U_QAQC),
+    'ya tiene una NCR activa'
+  );
+
+  // C) Transición inválida desde estado cerrado
+  const ncrId = _testGetProp('NCR_ACEP_ID');
+  _assertError('testNcrValidaciones-reabrirCerrada',
+    () => ncrUpdateEstado(ncrId, 'EN_REVISION', '', U_QAQC),
+    'Transición no permitida'
+  );
+
+  // D) Perfil sin permiso para crear NCR
+  _assertError('testNcrValidaciones-perfilSinPermiso',
+    () => ncrCreate(itemTemp.item_id, { descripcion: 'Test' },
+      { email: 'almac@test.com', perfil: 'Almacenero' }),
+    'Permiso denegado'
+  );
+
+  Logger.log('   Todas las validaciones NCR pasaron ✓');
+}
+
+// Helper adicional: lee cantidad_bloqueada de STOCK
+function _testGetStockBloqueado(material_id, ubicacion_id) {
+  const sheet = getSheet(SHEETS.STOCK);
+  const rows  = sheetToObjects(sheet);
+  const row   = rows.find(r => r.material_id === material_id && r.ubicacion_id === ubicacion_id);
+  return row ? Number(row.cantidad_bloqueada) : 0;
 }
