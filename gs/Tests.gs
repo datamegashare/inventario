@@ -873,3 +873,112 @@ function _testGetStockBloqueado(material_id, ubicacion_id) {
   const row   = rows.find(r => r.material_id === material_id && r.ubicacion_id === ubicacion_id);
   return row ? Number(row.cantidad_bloqueada) : 0;
 }
+
+// ============================================================
+// LIMPIEZA FÍSICA DE DATOS DE PRUEBA EN SHEETS
+// Ejecutar cuando testLimpiar() no alcanza (datos huérfanos en sheets)
+// ============================================================
+
+/**
+ * Borra lógicamente todas las filas creadas por los tests
+ * (identificadas por email awp.test o código TEST).
+ * Luego limpia las Script Properties.
+ * Es seguro correr más de una vez.
+ */
+function testLimpiarTotal() {
+  Logger.log('── LIMPIEZA TOTAL ────────────────────────');
+  const EMAIL_TEST = 'awp.test';
+  const ts = now();
+
+  // ── Recepciones y sus ítems ──────────────────────────────
+  let recIds = [];
+  _borrarFilasSheet(SHEETS.RECEPCIONES, row =>
+    (row.almacenero_email || '').includes(EMAIL_TEST) ||
+    (row.proveedor_razon_social || '').includes('Test') ||
+    (row.remito_numero || '').includes('TEST')
+  , ts, 'testLimpiarTotal', r => recIds.push(r.recepcion_id));
+
+  // Ítems de esas recepciones
+  let itemIds = [];
+  _borrarFilasSheet(SHEETS.RECEPCIONES_ITEMS, row => recIds.includes(row.recepcion_id),
+    ts, 'testLimpiarTotal', r => itemIds.push(r.item_id));
+
+  // Series de esos ítems
+  _borrarFilasSheet(SHEETS.MATERIAL_SERIES, row => itemIds.includes(row.recepcion_item_id),
+    ts, 'testLimpiarTotal');
+
+  // NCR de esos ítems
+  _borrarFilasSheet(SHEETS.NCR, row => itemIds.includes(row.item_id),
+    ts, 'testLimpiarTotal');
+
+  // ── Materiales de prueba (codigo_externo TEST-MAT-*) ─────
+  let matIds = [];
+  _borrarFilasSheet(SHEETS.MATERIALES, row =>
+    (row.codigo_externo || '').startsWith('TEST-MAT-')
+  , ts, 'testLimpiarTotal', r => matIds.push(r.material_id));
+
+  // Stock de esos materiales
+  _borrarFilasSheet(SHEETS.STOCK, row => matIds.includes(row.material_id),
+    ts, 'testLimpiarTotal');
+
+  // ── Ubicaciones de prueba (codigo TEST-*) ────────────────
+  _borrarFilasSheet(SHEETS.UBICACIONES, row =>
+    (row.codigo || '').startsWith('TEST-')
+  , ts, 'testLimpiarTotal');
+
+  // ── Familia de prueba (codigo TEST) ──────────────────────
+  _borrarFilasSheet(SHEETS.FAMILIAS, row =>
+    (row.codigo || '') === 'TEST'
+  , ts, 'testLimpiarTotal');
+
+  // ── Script Properties ────────────────────────────────────
+  const props = PropertiesService.getScriptProperties().getProperties();
+  Object.keys(props).filter(k => k.startsWith('TEST_'))
+    .forEach(k => PropertiesService.getScriptProperties().deleteProperty(k));
+
+  Logger.log('✅ Limpieza total completada');
+  Logger.log('   Recepciones borradas: ' + recIds.length);
+  Logger.log('   Ítems borrados:       ' + itemIds.length);
+  Logger.log('   Materiales borrados:  ' + matIds.length);
+}
+
+/** Helper: itera una sheet y borra lógicamente las filas que cumplan el predicado */
+function _borrarFilasSheet(sheetName, predicado, ts, usuario, onMatch) {
+  const sheet   = getSheet(SHEETS[sheetName] || sheetName);
+  if (!sheet) return;
+  const rows    = sheetToObjects(sheet);
+  const headers = getHeaders(sheet);
+  let  count    = 0;
+
+  rows.forEach((row, idx) => {
+    if (!row.borrado && predicado(row)) {
+      if (onMatch) onMatch(row);
+      row.borrado       = true;
+      row.borrado_por   = usuario;
+      row.borrado_fecha = ts;
+      if (row.actualizado_en !== undefined) row.actualizado_en = ts;
+      updateRow(sheet, idx + 1, headers, row);
+      count++;
+    }
+  });
+
+  if (count > 0) Logger.log('   ' + sheetName + ': ' + count + ' filas borradas');
+}
+
+/**
+ * Ejecutar UNA SOLA VEZ antes de testRunAll() para autorizar MailApp.
+ * Solo intenta enviar un email al propio admin — si falla, igual
+ * queda el permiso registrado en el proyecto.
+ */
+function testAutorizarMailApp() {
+  try {
+    MailApp.sendEmail(
+      Session.getActiveUser().getEmail(),
+      '[AWP Test] Autorización MailApp',
+      'Este email confirma que MailApp está autorizado para los tests de Etapa 2.'
+    );
+    Logger.log('✅ MailApp autorizado y email de prueba enviado a: ' + Session.getActiveUser().getEmail());
+  } catch(e) {
+    Logger.log('⚠ MailApp: ' + e.message + ' (el permiso igual quedó registrado)');
+  }
+}
