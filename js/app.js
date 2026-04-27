@@ -1,13 +1,74 @@
 // ============================================================
-// app.js — Bootstrap de la SPA
+// app.js — Bootstrap de la SPA  v2.0
+// ── Etapa 2: rutas recepciones, ncr, series agregadas ────────
 // ============================================================
-
 
 // ─── LAYOUT ─────────────────────────────────────────────────
 
 function renderLayout(pageTitle, activeNav) {
   const perfil = Auth.getPerfil();
   const nombre = Auth.getNombre();
+
+  // Ítems de nav visibles según perfil
+  // Regla: cada entrada define qué perfiles pueden verla.
+  const navItems = [
+    {
+      id:       'dashboard',
+      href:     '#/dashboard',
+      icon:     '⊞',
+      label:    'Dashboard',
+      perfiles: ['Admin', 'MatCoord', 'Almacenero', 'QAQC', 'Planner',
+                 'FieldEng', 'ViewerCliente', 'ViewerGerencia'],
+    },
+    {
+      id:       'materiales',
+      href:     '#/materiales',
+      icon:     '📦',
+      label:    'Materiales',
+      perfiles: ['Admin', 'MatCoord', 'Almacenero', 'QAQC', 'Planner',
+                 'FieldEng', 'ViewerCliente', 'ViewerGerencia'],
+    },
+    // ── Etapa 2 ──────────────────────────────────────────────
+    {
+      id:       'recepciones',
+      href:     '#/recepciones',
+      icon:     '🚚',
+      label:    'Recepciones',
+      perfiles: ['Admin', 'MatCoord', 'Almacenero', 'QAQC'],
+    },
+    {
+      id:       'ncr',
+      href:     '#/ncr',
+      icon:     '⚠',
+      label:    'NCR',
+      perfiles: ['Admin', 'MatCoord', 'QAQC'],
+    },
+    {
+      id:       'series',
+      href:     '#/series',
+      icon:     '🔍',
+      label:    'Trazabilidad',
+      perfiles: ['Admin', 'MatCoord', 'Almacenero', 'QAQC',
+                 'Planner', 'FieldEng'],
+    },
+    // ── Admin ─────────────────────────────────────────────────
+    {
+      id:       'admin',
+      href:     '#/admin',
+      icon:     '⚙',
+      label:    'Administración',
+      perfiles: ['Admin', 'MatCoord'],
+    },
+  ];
+
+  const navHtml = navItems
+    .filter(item => item.perfiles.includes(perfil))
+    .map(item => `
+      <a href="${item.href}" class="nav-item ${activeNav === item.id ? 'nav-active' : ''}">
+        <span class="nav-icon">${item.icon}</span>
+        <span>${item.label}</span>
+      </a>`)
+    .join('');
 
   document.getElementById('app').innerHTML = `
     <div class="app-layout">
@@ -20,21 +81,12 @@ function renderLayout(pageTitle, activeNav) {
           </svg>
           <div>
             <div class="logo-name">AWP Inventory</div>
-            <div class="logo-ver">Etapa 1</div>
+            <div class="logo-ver">Etapa 2</div>
           </div>
         </div>
 
         <nav class="sidebar-nav">
-          <a href="#/dashboard" class="nav-item ${activeNav==='dashboard'?'nav-active':''}">
-            <span class="nav-icon">⊞</span><span>Dashboard</span>
-          </a>
-          <a href="#/materiales" class="nav-item ${activeNav==='materiales'?'nav-active':''}">
-            <span class="nav-icon">📦</span><span>Materiales</span>
-          </a>
-          ${['Admin','MatCoord'].includes(perfil) ? `
-          <a href="#/admin" class="nav-item ${activeNav==='admin'?'nav-active':''}">
-            <span class="nav-icon">⚙</span><span>Administración</span>
-          </a>` : ''}
+          ${navHtml}
         </nav>
 
         <div class="sidebar-footer">
@@ -66,11 +118,18 @@ function renderLayout(pageTitle, activeNav) {
 // ─── ROUTING ────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
-  Router.on('login',          Pages.login);
-  Router.on('auth/callback',  Pages.authCallback);
-  Router.on('dashboard',      Pages.dashboard);
-  Router.on('materiales',     Pages.materiales);
-  Router.on('admin',          Pages.admin);
+  // ── Etapa 1 ───────────────────────────────────────────────
+  Router.on('login',         Pages.login);
+  Router.on('auth/callback', Pages.authCallback);
+  Router.on('dashboard',     Pages.dashboard);
+  Router.on('materiales',    Pages.materiales);
+  Router.on('admin',         Pages.admin);
+
+  // ── Etapa 2 ───────────────────────────────────────────────
+  Router.on('recepciones',   Pages.recepciones);
+  Router.on('ncr',           Pages.ncr);
+  Router.on('series',        Pages.series);
+
   Router.on('404', () => {
     document.getElementById('app').innerHTML = `
       <div class="full-center">
@@ -82,17 +141,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   Router.init();
 
-  // Warm-up del GAS: ping cada 25 min para evitar cold start
-  // Solo cuando hay sesión activa
+  // Warm-up GAS cada 25 min para evitar cold start
   function gasWarmup() {
     if (!Auth.isAuthenticated()) return;
-    fetch(window.APP_CONFIG.GAS_URL, {
+    fetch(window.APP_CONFIG?.GAS_URL || '', {
       method: 'POST',
-      body: (() => { const f = new FormData(); f.append('payload', JSON.stringify({ action: 'health' })); return f; })(),
+      body: (() => {
+        const f = new FormData();
+        f.append('payload', JSON.stringify({ action: 'health' }));
+        return f;
+      })(),
       redirect: 'follow',
-    }).catch(() => {}); // silencioso — no importa si falla
+    }).catch(() => {});
   }
-  // Primer ping a los 5 min, luego cada 25 min
   setTimeout(() => {
     gasWarmup();
     setInterval(gasWarmup, 25 * 60 * 1000);

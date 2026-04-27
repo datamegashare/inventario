@@ -1,13 +1,17 @@
 // ============================================================
-//  api.js  — Inventario AWP  v2.3  (revisión completa)
+//  api.js  — Inventario AWP  v3.0
 //  Formato: POST FormData con campo "payload" = JSON string
 //  Code.gs lee: body = JSON.parse(e.parameter.payload)
 //
 //  Contratos verificados contra todos los pages:
-//  - login.js:      API.getAuthUrl(), API.exchangeToken(code)
-//  - dashboard.js:  API.materiales.list({}), API.familias.list(), API.ubicaciones.list()
-//  - materiales.js: API.materiales.{list,create,update,delete,import}
-//  - admin.js:      API.usuarios.*, API.familias.*, API.ubicaciones.*, API.config.*, API.historial.*
+//  - login.js:        API.getAuthUrl(), API.exchangeToken(code)
+//  - dashboard.js:    API.materiales.list({}), API.familias.list(), API.ubicaciones.list()
+//  - materiales.js:   API.materiales.{list,get,create,update,delete,import}
+//  - admin.js:        API.usuarios.*, API.familias.*, API.ubicaciones.*, API.config.*, API.historial.*
+//  ── Etapa 2 ──────────────────────────────────────────────────
+//  - recepciones.js:  API.recepciones.*, API.items.*
+//  - ncr.js:          API.ncr.*
+//  - series.js:       API.series.*, API.stock.*, API.movimientos.*
 // ============================================================
 
 const API = (() => {
@@ -23,9 +27,7 @@ const API = (() => {
     const fd = new FormData();
     fd.append('payload', JSON.stringify(payload));
 
-    // GAS Web App: usar redirect:'follow' directamente
-    // El fetch POST sigue el redirect y llega al doPost correctamente
-    let res = await fetch(GAS_URL, { method:'POST', body:fd, redirect:'follow' });
+    let res = await fetch(GAS_URL, { method: 'POST', body: fd, redirect: 'follow' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
@@ -34,41 +36,30 @@ const API = (() => {
         Auth.clearSession();
         Router.navigate('login');
       }
-      // Preferir data.detail (mensaje de negocio) sobre data.error (mensaje genérico)
       throw new Error(data.detail || data.error);
     }
     return data;
   }
 
-  // ── login.js: const { auth_url } = await API.getAuthUrl() ──
+  // ── Auth ─────────────────────────────────────────────────────
+
   async function getAuthUrl() {
     const r = await _call('auth_url');
-    // Auth.gs v2 devuelve { authUrl, state } — normalizar a { auth_url }
     if (r.authUrl) r.auth_url = r.authUrl;
-    // Guardar state para validación CSRF en exchangeToken
     if (r.state) sessionStorage.setItem('oauth_state', r.state);
     return r;
   }
 
-  // ── login.js: const tokenData = await API.exchangeToken(params.code) ──
-  // login.js luego hace Auth.setSession(tokenData)
-  // Auth.setSession espera { token, nombre, perfil, email, expires_in }
   async function exchangeToken(code) {
-    // Recuperar state guardado por getAuthUrl (si existe)
     const state = sessionStorage.getItem('oauth_state') || '';
     sessionStorage.removeItem('oauth_state');
-
     const r = await _call('auth_token', { code, state });
-
-    // Auth.gs v2 devuelve { success, sessionId, user:{email,name,picture,role}, expiresAt }
-    // Normalizar al formato que espera Auth.setSession y login.js
     if (r.sessionId && !r.token) {
       r.token      = r.sessionId;
       r.nombre     = r.user?.name  || r.user?.email || 'Usuario';
       r.perfil     = r.user?.role  || 'viewer';
       r.email      = r.user?.email || '';
       r.usuario_id = r.user?.email || '';
-      // expires_in en segundos desde expiresAt timestamp
       r.expires_in = r.expiresAt
         ? Math.floor((r.expiresAt - Date.now()) / 1000)
         : 28800;
@@ -76,14 +67,15 @@ const API = (() => {
     return r;
   }
 
-  // ── Namespaces de dominio ────────────────────────────────────
+  // ── Etapa 1 — namespaces sin cambios ─────────────────────────
+
   const materiales = {
-    list:   (filters={}) => _call('materiales_list',   { filters }),
-    get:    id           => _call('materiales_get',    { material_id: id }),
-    create: data         => _call('materiales_create', { data }),
-    update: (id, data)   => _call('materiales_update', { material_id: id, data }),
-    delete: id           => _call('materiales_delete', { material_id: id }),
-    import: rows         => _call('materiales_import', { rows }),
+    list:   (filters = {}) => _call('materiales_list',   { filters }),
+    get:    id             => _call('materiales_get',    { material_id: id }),
+    create: data           => _call('materiales_create', { data }),
+    update: (id, data)     => _call('materiales_update', { material_id: id, data }),
+    delete: id             => _call('materiales_delete', { material_id: id }),
+    import: rows           => _call('materiales_import', { rows }),
   };
 
   const familias = {
@@ -114,10 +106,69 @@ const API = (() => {
   };
 
   const historial = {
-    list: (filters={}) => _call('historial_list', { filters }),
+    list: (filters = {}) => _call('historial_list', { filters }),
   };
 
-  return { getAuthUrl, exchangeToken,
-           materiales, familias, ubicaciones, usuarios, config, historial };
-})();
+  // ── Etapa 2 — namespaces nuevos ───────────────────────────────
 
+  /** RECEPCIONES — cabecera del remito */
+  const recepciones = {
+    list:   (filters = {}) => _call('recepciones_list',   { filters }),
+    get:    id             => _call('recepciones_get',    { recepcion_id: id }),
+    create: data           => _call('recepciones_create', { data }),
+    update: (id, data)     => _call('recepciones_update', { recepcion_id: id, data }),
+    delete: id             => _call('recepciones_delete', { recepcion_id: id }),
+  };
+
+  /**
+   * RECEPCIONES_ITEMS — líneas del remito
+   * items.create envía series como array opcional: data.series = ['SN-001', ...]
+   */
+  const items = {
+    list:    recepcion_id      => _call('items_list',    { recepcion_id }),
+    create:  (recepcion_id, data) => _call('items_create', { recepcion_id, data }),
+    update:  (id, data)        => _call('items_update',  { item_id: id, data }),
+    aprobar: id                => _call('items_aprobar', { item_id: id }),
+    delete:  id                => _call('items_delete',  { item_id: id }),
+  };
+
+  /** NCR — Non-Conformance Reports */
+  const ncr = {
+    list:         (filters = {})                    => _call('ncr_list',          { filters }),
+    get:          id                                => _call('ncr_get',           { ncr_id: id }),
+    create:       (item_id, data)                   => _call('ncr_create',        { item_id, data }),
+    updateEstado: (id, estado, observaciones = '')  => _call('ncr_update_estado', { ncr_id: id, estado, observaciones }),
+  };
+
+  /** MATERIAL_SERIES — trazabilidad individual de seriales/tags */
+  const series = {
+    list: (filters = {}) => _call('series_list', { filters }),
+    get:  id             => _call('series_get',  { serie_id: id }),
+  };
+
+  /** STOCK — disponible/reservado/bloqueado por material+ubicación */
+  const stock = {
+    list: (filters = {}) => _call('stock_list', { filters }),
+  };
+
+  /** MOVIMIENTOS — log operativo cronológico */
+  const movimientos = {
+    list: (filters = {}) => _call('movimientos_list', { filters }),
+  };
+
+  /** NOTIFICACIONES_CONFIG — configuración del motor de alertas */
+  const notifConfig = {
+    list:   ()         => _call('notif_config_list'),
+    update: (id, data) => _call('notif_config_update', { notif_id: id, data }),
+  };
+
+  // ── Export ───────────────────────────────────────────────────
+  return {
+    // Auth
+    getAuthUrl, exchangeToken,
+    // Etapa 1
+    materiales, familias, ubicaciones, usuarios, config, historial,
+    // Etapa 2
+    recepciones, items, ncr, series, stock, movimientos, notifConfig,
+  };
+})();
