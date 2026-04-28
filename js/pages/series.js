@@ -1,5 +1,5 @@
 // ============================================================
-// pages/series.js — Trazabilidad y Stock  (Etapa 2)
+// pages/series.js — Trazabilidad y Stock  (Etapa 2) 213
 //
 // Tabs:
 //   series    → búsqueda de seriales/tags

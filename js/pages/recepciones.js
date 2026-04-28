@@ -1,5 +1,5 @@
 // ============================================================
-// pages/recepciones.js — Recepción de Remitos  (Etapa 2)
+// pages/recepciones.js — Recepción de Remitos  (Etapa 2) 213
 //
 // Vistas:
 //   #/recepciones          → lista de recepciones

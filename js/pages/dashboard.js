@@ -1,5 +1,5 @@
 // ============================================================
-// pages/dashboard.js — Dashboard principal (Etapa 1)
+// pages/dashboard.js — Dashboard principal (Etapa 1) 213
 // ============================================================
 
 Pages.dashboard = async function(params) {
