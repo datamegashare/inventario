@@ -80,7 +80,7 @@ function renderLayout(pageTitle, activeNav) {
             <circle cx="28" cy="14" r="4" fill="#7dd3fc"/>
           </svg>
           <div>
-            <div class="logo-name">AWP Inventory</div>
+            <div class="logo-name">DMS Inventario</div>
             <div class="logo-ver">Etapa 2</div>
           </div>
         </div>

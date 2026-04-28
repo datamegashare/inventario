@@ -24,6 +24,7 @@ const UI = (() => {
   function createToastContainer() {
     const c = document.createElement('div');
     c.id = 'toast-container';
+    c.style.cssText = 'position:fixed;top:1.25rem;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;';
     document.body.appendChild(c);
     return c;
   }
@@ -60,7 +61,10 @@ const UI = (() => {
 
     overlay.querySelector('.modal-close').addEventListener('click', close);
     overlay.querySelector('.modal').addEventListener('click', e => e.stopPropagation());
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    overlay.addEventListener('mousedown', e => { overlay._mousedownTarget = e.target; });
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay && overlay._mousedownTarget === overlay) close();
+    });
     document.body.appendChild(overlay);
     requestAnimationFrame(() => overlay.classList.add('modal-open'));
     return { close, el: overlay };
