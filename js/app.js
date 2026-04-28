@@ -1,5 +1,5 @@
 // ============================================================
-// app.js — Bootstrap de la SPA  v2.0
+// app.js — Bootstrap de la SPA  v2.0 213
 // ── Etapa 2: rutas recepciones, ncr, series agregadas ────────
 // ============================================================
 
