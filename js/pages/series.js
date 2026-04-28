@@ -303,7 +303,9 @@ async function _renderMovimientos() {
         const filters = {
           tipo:        document.getElementById('filter-tipo-mov').value || undefined,
           fecha_desde: document.getElementById('filter-desde').value   || undefined,
-          fecha_hasta: document.getElementById('filter-hasta').value   || undefined,
+          fecha_hasta: document.getElementById('filter-hasta').value
+                         ? document.getElementById('filter-hasta').value + 'T23:59:59'
+                         : undefined,
         };
         const raw = await API.movimientos.list(filters);
         const movs = Array.isArray(raw) ? raw : (raw.data || []);

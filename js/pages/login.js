@@ -48,7 +48,7 @@ Pages.login = async function(params) {
         </button>
         <p class="login-note">Solo usuarios autorizados. Contacte al administrador si no puede acceder.</p>
       </div>
-      <div class="login-version">AWP Inventory System v1.0 — Etapa 1</div>
+      <div class="login-version">DMS Inventario v1.0 — Etapa 1</div>
     </div>
   `;
 

@@ -124,11 +124,11 @@ async function _recepcionesNueva() {
         </div>
         <div class="field">
           <label>Fecha de Recepción <span class="required">*</span></label>
-          <input type="date" name="fecha" class="input" value="${new Date().toISOString().slice(0,10)}" required>
+          <input type="date" name="fecha" class="input" value="${new Date().toISOString().slice(0,10)}" max="${new Date().toISOString().slice(0,10)}" required>
         </div>
         <div class="field">
           <label>Fecha del Remito</label>
-          <input type="date" name="remito_fecha" class="input">
+          <input type="date" name="remito_fecha" class="input" max="${new Date().toISOString().slice(0,10)}">
         </div>
         <div class="field">
           <label>Proveedor / Razón Social <span class="required">*</span></label>
@@ -154,6 +154,10 @@ async function _recepcionesNueva() {
     if (!data.remito_numero?.trim())          { UI.toast('Número de remito requerido', 'error'); return; }
     if (!data.fecha)                           { UI.toast('Fecha requerida', 'error'); return; }
     if (!data.proveedor_razon_social?.trim())  { UI.toast('Proveedor requerido', 'error'); return; }
+
+    const hoy = new Date().toISOString().slice(0, 10);
+    if (data.fecha > hoy) { UI.toast('La fecha de recepción no puede ser futura', 'error'); return; }
+    if (data.remito_fecha && data.remito_fecha > hoy) { UI.toast('La fecha del remito no puede ser futura', 'error'); return; }
 
     const btn = document.getElementById('btn-crear');
     btn.disabled = true; btn.textContent = 'Creando…';
@@ -241,9 +245,27 @@ async function _recepcionDetalle(recepcion_id) {
       document.getElementById('items-table').innerHTML =
         `<div class="spinner-wrap"><span class="spinner"></span></div>`;
       try {
-        const rawItems = await API.items.list(recepcion_id);
+        const [rawItems, recActualizada] = await Promise.all([
+          API.items.list(recepcion_id),
+          API.recepciones.get(recepcion_id),
+        ]);
         const items = Array.isArray(rawItems) ? rawItems : (rawItems.data || []);
-        _renderItemsTable(items, matMap, ubicMap, rec, refreshItems);
+        // Actualizar badge de estado en cabecera
+        const infoEl = document.getElementById('rec-info');
+        if (infoEl) {
+          infoEl.innerHTML = `
+            <div class="info-chips">
+              <span class="info-chip"><strong>Estado:</strong> ${_badgeEstadoRec(recActualizada.estado)}</span>
+              <span class="info-chip"><strong>Almacenero:</strong> ${UI.escHtml(recActualizada.almacenero_email)}</span>
+              ${recActualizada.observaciones ? `<span class="info-chip"><strong>Obs:</strong> ${UI.escHtml(recActualizada.observaciones)}</span>` : ''}
+            </div>
+          `;
+        }
+        // Ocultar botón agregar ítem si recepción se cerró
+        if (recActualizada.estado === 'CERRADA') {
+          document.getElementById('btn-add-item-wrap').innerHTML = '';
+        }
+        _renderItemsTable(items, matMap, ubicMap, recActualizada, refreshItems);
       } catch(err) {
         document.getElementById('items-table').innerHTML =
           `<div class="alert alert-error">${UI.escHtml(err.message)}</div>`;

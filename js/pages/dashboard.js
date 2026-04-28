@@ -13,7 +13,7 @@ Pages.dashboard = async function(params) {
     <div class="dashboard-welcome">
       <div>
         <h2 class="page-title">Bienvenido, ${UI.escHtml(nombre)}</h2>
-        <p class="page-sub">${UI.escHtml(perfil)} — AWP Inventory System</p>
+        <p class="page-sub">${UI.escHtml(perfil)} — DMS Inventario</p>
       </div>
     </div>
 
