@@ -11,77 +11,63 @@ function renderLayout(pageTitle, activeNav) {
 
   // Ítems de nav visibles según perfil
   // Regla: cada entrada define qué perfiles pueden verla.
-  const navItems = [
+  // Grupos de navegación con separadores visuales
+  const navGroups = [
     {
-      id:       'dashboard',
-      href:     '#/dashboard',
-      icon:     '⊞',
-      label:    'Dashboard',
-      perfiles: ['Admin', 'MatCoord', 'Almacenero', 'QAQC', 'Planner',
-                 'FieldEng', 'ViewerCliente', 'ViewerGerencia'],
+      label: 'Principal',
+      items: [
+        { id: 'dashboard',   href: '#/dashboard',   icon: '▣', label: 'Dashboard',
+          perfiles: ['Admin','MatCoord','Almacenero','QAQC','Planner','FieldEng','ViewerCliente','ViewerGerencia'] },
+        { id: 'materiales',  href: '#/materiales',  icon: '◫', label: 'Materiales',
+          perfiles: ['Admin','MatCoord','Almacenero','QAQC','Planner','FieldEng','ViewerCliente','ViewerGerencia'] },
+        { id: 'recepciones', href: '#/recepciones', icon: '↓', label: 'Recepciones',
+          perfiles: ['Admin','MatCoord','Almacenero','QAQC'] },
+      ]
     },
     {
-      id:       'materiales',
-      href:     '#/materiales',
-      icon:     '📦',
-      label:    'Materiales',
-      perfiles: ['Admin', 'MatCoord', 'Almacenero', 'QAQC', 'Planner',
-                 'FieldEng', 'ViewerCliente', 'ViewerGerencia'],
-    },
-    // ── Etapa 2 ──────────────────────────────────────────────
-    {
-      id:       'recepciones',
-      href:     '#/recepciones',
-      icon:     '🚚',
-      label:    'Recepciones',
-      perfiles: ['Admin', 'MatCoord', 'Almacenero', 'QAQC'],
+      label: 'QAQC',
+      items: [
+        { id: 'ncr',    href: '#/ncr',    icon: '!', label: 'NCR',
+          perfiles: ['Admin','MatCoord','QAQC'] },
+        { id: 'series', href: '#/series', icon: '≡', label: 'Trazabilidad',
+          perfiles: ['Admin','MatCoord','Almacenero','QAQC','Planner','FieldEng'] },
+      ]
     },
     {
-      id:       'ncr',
-      href:     '#/ncr',
-      icon:     '⚠',
-      label:    'NCR',
-      perfiles: ['Admin', 'MatCoord', 'QAQC'],
-    },
-    {
-      id:       'series',
-      href:     '#/series',
-      icon:     '🔍',
-      label:    'Trazabilidad',
-      perfiles: ['Admin', 'MatCoord', 'Almacenero', 'QAQC',
-                 'Planner', 'FieldEng'],
-    },
-    // ── Admin ─────────────────────────────────────────────────
-    {
-      id:       'admin',
-      href:     '#/admin',
-      icon:     '⚙',
-      label:    'Administración',
-      perfiles: ['Admin', 'MatCoord'],
+      label: 'Admin',
+      items: [
+        { id: 'admin', href: '#/admin', icon: '⚙', label: 'Administración',
+          perfiles: ['Admin','MatCoord'] },
+      ]
     },
   ];
+  // Aplanar para compatibilidad con lógica existente
+  const navItems = navGroups.flatMap(g => g.items);
 
-  const navHtml = navItems
-    .filter(item => item.perfiles.includes(perfil))
-    .map(item => `
+  const navHtml = navGroups.map(group => {
+    const visibles = group.items.filter(item => item.perfiles.includes(perfil));
+    if (!visibles.length) return '';
+    const items = visibles.map(item => `
       <a href="${item.href}" class="nav-item ${activeNav === item.id ? 'nav-active' : ''}">
         <span class="nav-icon">${item.icon}</span>
         <span>${item.label}</span>
-      </a>`)
-    .join('');
+      </a>`).join('');
+    return `<div class="nav-group">${group.label}</div>${items}`;
+  }).join('');
 
   document.getElementById('app').innerHTML = `
     <div class="app-layout">
       <aside class="sidebar">
         <div class="sidebar-logo">
-          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" width="32" height="32">
-            <rect width="40" height="40" rx="8" fill="#1a4a7a"/>
-            <path d="M8 28L16 12L24 22L28 16L32 28H8Z" fill="#4a9fe0" opacity="0.8"/>
-            <circle cx="28" cy="14" r="4" fill="#7dd3fc"/>
+          <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+            <rect width="36" height="36" rx="9" fill="#1a4a7a"/>
+            <rect x="8" y="16" width="6" height="12" rx="1.5" fill="#7dd3fc" opacity=".9"/>
+            <rect x="15" y="11" width="6" height="17" rx="1.5" fill="#4a9fe0"/>
+            <rect x="22" y="8" width="6" height="20" rx="1.5" fill="#93c5fd" opacity=".8"/>
           </svg>
           <div>
             <div class="logo-name">DMS Inventario</div>
-            <div class="logo-ver">Etapa 2</div>
+            <div class="logo-ver">v2.0 · Etapa 2</div>
           </div>
         </div>
 
