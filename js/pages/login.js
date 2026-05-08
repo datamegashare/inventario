@@ -16,7 +16,7 @@ Pages.login = async function(params) {
               <path d="M8 28L16 12L24 22L28 16L32 28H8Z" fill="#4a9fe0" opacity="0.8"/>
               <circle cx="28" cy="14" r="4" fill="#7dd3fc"/>
             </svg>
-            <span>AWP Inventario</span>
+            <span>DMS Inventario</span>
           </div>
           <div class="alert alert-error">
             <strong>Error de autenticación:</strong> ${UI.escHtml(params.error)}
@@ -38,7 +38,7 @@ Pages.login = async function(params) {
             <path d="M8 28L16 12L24 22L28 16L32 28H8Z" fill="#4a9fe0" opacity="0.8"/>
             <circle cx="28" cy="14" r="4" fill="#7dd3fc"/>
           </svg>
-          <span>AWP Inventario</span>
+          <span>DMS Inventario</span>
         </div>
         <h1 class="login-title">Sistema de Inventario de Materiales</h1>
         <p class="login-subtitle">Ingresá con tu cuenta de Google corporativa para continuar.</p>
